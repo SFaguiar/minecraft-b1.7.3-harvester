@@ -23,6 +23,7 @@ Status: **PROVEN for build, baseline MultiMC, and dedicated server; client pendi
 ## Observed
 
 - `clean check build` completed successfully with Java 17.
+- Re-run and verified the build successfully from the committed HEAD `465218d0ee68d4d5d2a1e439c5d4af0101030306` with a clean working tree.
 - Metadata, Mixin configuration, tests, secret checks, and prohibited-file checks passed.
 - The operator launched the official Babric Clean package in MultiMC with Java 17.
 - The operator launched StationAPI 2.0.0-alpha.6.2 in MultiMC with Java 17 and reached the menu.
