@@ -1,0 +1,47 @@
+# Gradle and build output
+.gradle/
+build/
+out/
+run/
+runs/
+
+# IDE state
+.idea/
+*.iml
+.vscode/
+
+# Logs and local test state
+logs/
+*.log
+crash-reports/
+saves/
+screenshots/
+
+# Proprietary game data and legacy toolchains
+assets/
+instances/
+libraries/
+natives/
+tools/mcp*/
+mcp*/
+decompiled/
+reference/decompiled/
+accounts.json
+minecraft.jar
+
+# Archives, compiled classes, and dependency binaries
+*.class
+*.jar
+*.jarmod
+*.litemod
+*.rar
+*.zip
+*.7z
+
+# The verified Gradle Wrapper bootstrap is the only potential JAR exception.
+!gradle/wrapper/gradle-wrapper.jar
+
+# Operating-system noise
+.DS_Store
+Thumbs.db
+desktop.ini
