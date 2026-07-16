@@ -10,18 +10,22 @@
 
 ## Public remote containment
 
-The public legacy repository currently exposes both the decompiled source snapshot and
-a release JAR containing a modified base class. Under the standing rules, the safe
-non-rewriting remediation is:
+Completed on 2026-07-16 without force push or tag changes:
 
-1. delete the `Harvester.jar` release asset while preserving release notes and tag;
-2. add a normal legacy maintenance commit removing `PlayerControllerSP.java` and
-   `MLProp.java` from the default branch;
-3. revise legacy documentation so it does not claim all tracked material is MIT;
-4. mark the legacy repository as superseded and do not use it for future releases;
-5. use this clean repository for all StationAPI work.
+1. removed the `Harvester.jar` asset while preserving the `v1.0.0` release and tag;
+2. merged legacy pull request
+   [`#1`](https://github.com/SFaguiar/minecraft-b1.7.3-harvester/pull/1);
+3. removed `PlayerControllerSP.java`, `MLProp.java`, and the unsafe build script from
+   the default branch;
+4. added a provenance notice and prohibited-content guard to the legacy branch;
+5. removed the short remediation branch after merge.
 
-Steps 1 through 4 require authenticated remote changes. They do not remove objects
-reachable from the published tag. Complete erasure would require destructive history
-replacement or repository deletion, which is outside the approved policy and is not
-performed automatically.
+The legacy `master` merge commit is
+`16c97cbcc9eb2ee8346426463c9a06565bf53fb5`. The annotated tag object remains
+`7126beda6977ee7e4ef7e6804150949e349ad093` and still points to legacy commit
+`186f99402541aae93ee70ae137dbee1c31ce0655`.
+
+Objects reachable from that published tag still contain the historical sources. Full
+erasure would require destructive history replacement or repository deletion, which
+remains outside the approved policy. The tag and private bundle are evidence only and
+must never be used as the source base or a release artifact for Harvester 2.x.
