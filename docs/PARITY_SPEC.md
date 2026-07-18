@@ -36,18 +36,27 @@ canopy detection, or leaf handling — see "Permanently out of parity scope" bel
 
 ## Eligible blocks and tools
 
-- Logs form one wood group and require an appropriate axe. The legacy
-  implementation matches by block ID only, with no metadata/species filter, so
-  every log species sharing that ID chains together — whether the 2.x port
-  preserves this exact granularity or adopts per-species grouping via
-  StationAPI's `BlockState` system is an open design decision (see
-  `better-beta-program/docs/operations/OPEN_QUESTIONS.md` Q0003).
+- Logs form one wood group and require an appropriate axe. **Decided** (see
+  `better-beta-program/docs/operations/OPEN_QUESTIONS.md` Q0003, `DECIDED`):
+  the 2.x port groups by the semantic tag `BlockTags.LOGS`/`c:logs`
+  (`state.isIn(BlockTags.LOGS)`), not by raw block ID or metadata — every log
+  species sharing that tag chains together, mirroring the legacy's
+  ID-only (metadata-blind) grouping in effect, while additionally recognizing
+  correctly-tagged logs from other mods. Already implemented in
+  `SingleplayerHarvestDiscoveryAdapter` and exercised in real runtime
+  (`CLM-0019`).
 - Coal, iron, gold, diamond, redstone, and lapis form distinct ore groups and require
-  an appropriate pickaxe. The legacy redstone group spans two block IDs
-  (lit/unlit) treated as one group (open design decision on how to express this
-  under StationAPI's block-state model — Q0005). No special ID/metadata handling
-  was found for lapis beyond a single block ID, the same pattern as the other
-  single-ID ore groups (Q0006, open only for confirmation).
+  an appropriate pickaxe. **Decided** (Q0005/Q0006, both `DECIDED`): redstone
+  groups by `BlockTags.REDSTONE_ORES`/`c:ores/redstone` (covering both the lit
+  and unlit vanilla variants, StationAPI's own internal `BlockState`
+  representation preserved as-is); lapis groups by
+  `BlockTags.LAPIS_ORES`/`c:ores/lapis`, with no special ID/metadata handling,
+  the same pattern as the other ore groups. **Decided** (Q0012, `DECIDED`,
+  new): mod-added ores of the same material chain together via a shared
+  specific `c:ores/<material>` tag (never the generic umbrella `c:ores` tag
+  alone), with a conservative same-registered-block-identity fallback for
+  mods that only tag the umbrella tag. None of this is implemented in code
+  yet — the decisions are closed, the implementation gate remains open.
 - Vanilla harvest eligibility and tool tier remain authoritative.
 - Breaking an ineligible block, using an unsuitable tool, or releasing the activation
   key preserves ordinary game behavior. In particular: a tool that cannot harvest
@@ -59,41 +68,64 @@ canopy detection, or leaf handling — see "Permanently out of parity scope" bel
 
 - Blocks connected through faces, edges, or corners are treated as connected
   (full 26-neighbor 3D adjacency, diagonals included).
-- The configured maximum bounds the size of the chain. **Whether this count
-  includes the block broken by hand or only the additional chained blocks is an
-  open design decision** — the legacy implementation counts the hand-broken
-  block toward the limit (`broken` starts at `1`), which reads in tension with
-  an "additional work" framing; see
-  `better-beta-program/docs/operations/OPEN_QUESTIONS.md` Q0002. `PARITY_SPEC.md`
-  intentionally does not resolve this by itself.
+- The configured maximum (`maxChain`) bounds the **total** size of the chain,
+  including the block broken by hand. **Decided** (see
+  `better-beta-program/docs/operations/OPEN_QUESTIONS.md` Q0002, `DECIDED`):
+  the hand-broken block occupies one unit of the limit — `maxChain = 64`
+  permits at most 1 original block plus 63 additional blocks — matching the
+  legacy's proven behavior (`broken` starts at `1`). This is the interpretation
+  the current `core` module already implements (`HarvestRequest`/`HarvestPlan`,
+  see `CLM-0012`).
 - The legacy UI exposed limits 8, 16, 32, 64, and 100; the historical default was 64.
 - Processing must not force-load chunks or operate outside valid world height.
 - Each position is processed at most once.
-- The flood fill's visitation order is deterministic in the legacy implementation
-  for a fixed world state, but no specific order is mandated by this spec — see
-  Q0004 for whether the 2.x search order must match the legacy order exactly
-  (this matters only for which blocks are included when the limit truncates the
-  search mid-fill).
+- The flood fill's visitation order must reproduce the legacy's exact
+  deterministic order. **Decided** (Q0004, `DECIDED`): iterative BFS, FIFO
+  queue, outer loop `dx`, then `dy`, then `dz`, values -1 to 1, excluding only
+  `(0, 0, 0)` — exactly 26 neighbors in a stable order. This matters for which
+  blocks are included when the limit truncates the search mid-fill. The
+  existing `LegacyTwentySixNeighborhood` implementation already follows this
+  exact loop nesting (confirmed by direct source review, not by a dedicated
+  bit-for-bit comparison test).
 
 ## Drops and durability
 
 - Eligible chained blocks use the game's applicable harvesting and drop rules,
   exactly as vanilla would compute them per block.
-- Drops are consolidated into legal stack sizes and spawn **at** the initiating
-  block's position, with the same small positional jitter vanilla uses for any
-  dropped item (not merely "near" it, and not scattered per chained block).
+- **Decided** (see `better-beta-program/docs/operations/OPEN_QUESTIONS.md`
+  Q0009, `DECIDED` — this corrects the previous revision of this section,
+  which described consolidated drops): drops are **not** consolidated by the
+  Harvester. Each additional block passes individually through the game's
+  normal break flow — the world-owning authority (the local process in
+  singleplayer, exclusively the server in multiplayer) executes the break and
+  spawns whatever drops that normal flow produces, at that block's own
+  position. The Harvester never aggregates stacks, never computes drops
+  itself, and never calls a direct item-spawn as a substitute for a normal
+  break — this preserves compatibility with modded ores/woods, custom drops,
+  random quantities, experience, tool-tier requirements, events, terrain
+  protections, `BlockState` changes, Fortune-like mechanics, and third-party
+  machines/automation. Drop-entity consolidation may be studied later as a
+  separate optimization, never as a requirement of the first functional
+  version.
 - Optional durability cost is proportional to additional blocks processed: one
   ordinary vanilla durability application per extra block, not a custom
-  multiplier. The origin block's own vanilla durability cost and drop are
-  entirely untouched by the chain — the hook observes the origin block only
-  after vanilla has already fully resolved it (removal, tier check, durability,
-  drop), and the chain logic only ever affects the *additional* blocks.
+  multiplier. **Decided** (Q0007, `DECIDED`): no charge for a block that
+  disappeared before execution, stopped belonging to the group, was refused,
+  could not be broken, or failed during the operation; immediate chain
+  interruption when the tool breaks; no Harvester-specific multiplier; no
+  direct manipulation of the damage value; no duplicate durability call. Tool
+  compatibility is not restricted to concrete vanilla classes (e.g. `AxeItem`/
+  `PickaxeItem`) — the normal break path is reused so tool/player/block/
+  StationAPI hooks still run for modded tools. The origin block's own vanilla
+  durability cost and drop remain entirely untouched by the chain — the hook
+  observes the origin block only after vanilla has already fully resolved it.
 - If the tool breaks, processing stops at the same boundary expected from ordinary
   tool use.
-- Exact durability cost per block and any interaction with an "Unbreaking"-style
-  enchantment remain an open question (Q0007) — Beta 1.7.3 predates the
-  introduction of enchanting, so the interaction is presumed not applicable, but
-  this should be confirmed before implementation rather than assumed.
+- "Unbreaking"-style enchantment interaction is `NOT_APPLICABLE` (Q0007,
+  `DECIDED`) — Beta 1.7.3 predates the introduction of enchanting entirely. If
+  a future backport ever adds an equivalent mechanic, reusing the normal break
+  flow is expected to let that mod's own mechanic apply without special-casing
+  here.
 
 ## Reliability and sides
 
@@ -101,17 +133,26 @@ canopy detection, or leaf handling — see "Permanently out of parity scope" bel
 - World restart, configuration reload, and mod removal where safe require manual
   coverage.
 - Harvester 1.x was single-player. Client/server authority and dedicated-server
-  behavior for 2.x are new design requirements, not presumed parity. In
-  particular, two aspects have **no legacy precedent to draw on** and remain
-  open design questions, not gaps in this spec's research:
-  - How a server authoritative for the chain learns that the client-only
-    activation key is held (Q0008) — the legacy implementation never faced this,
-    being single-process/single-player.
-  - Which side owns spawning consolidated drops, and how their position stays
-    correct for every observing client (Q0009) — the legacy implementation
-    spawned drops in-process and explicitly disabled drop spawning entirely in
-    any multiplayer world (`world.multiplayerWorld` guard), so it never solved
-    this; it avoided it.
+  behavior for 2.x are new design requirements, not presumed parity — the
+  legacy implementation had no precedent to draw on for either aspect below,
+  since it was single-process/single-player and explicitly disabled drop
+  spawning in any multiplayer world (`world.multiplayerWorld` guard). Both are
+  now **decided** (full text in
+  `better-beta-program/docs/operations/OPEN_QUESTIONS.md` Q0008/Q0009, and in
+  `better-beta-program/docs/decisions/0002-block-break-hook-selection.md`'s
+  multiplayer activation policy section) — neither is implemented in code yet:
+  - Multiplayer activation is opt-in per server, defaults to disabled, requires
+    an explicit in-game warning before first enabling on a server, and is only
+    effectively active when the player's per-server preference, the held key,
+    and the server's own policy/validation all agree
+    (`effectiveActive = playerOptIn AND keyHeld AND serverAllows AND
+    serverValidationPasses`) — the server is always authoritative and the
+    client can never force the mechanic to run.
+  - Drops are never consolidated; each additional block is broken individually
+    by the world-owning authority (exclusively the server in multiplayer),
+    which spawns whatever drops the normal break flow produces at that block's
+    own position, synchronized to observers by the platform's ordinary entity
+    mechanism.
 
 ## Permanently out of parity scope
 
@@ -128,7 +169,9 @@ are not a goal for 2.x parity at any point:
 
 ## Explicit non-goals for the foundation increment (temporary — not yet built)
 
-No flood fill, vein mining, tree felling, drop consolidation, durability algorithm,
-final UI, or networking implementation is present yet. Unlike the permanent
-exclusions above, everything in this section is expected to be built in a later
-increment.
+No flood fill, vein mining, tree felling, durability algorithm, final UI, or
+networking implementation is present yet. Unlike the permanent exclusions
+above, everything in this section is expected to be built in a later
+increment. Drop consolidation is not in this list because it is not a
+temporary gap — see "Drops and durability" above (Q0009, `DECIDED`): drops
+are never consolidated, by design, not yet.

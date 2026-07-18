@@ -14,7 +14,10 @@
   "entrypoints": {
     "main": ["io.github.sfaguiar.harvester.platform.HarvesterEntrypoint"],
     "client": ["io.github.sfaguiar.harvester.client.HarvesterClientEntrypoint"],
-    "server": ["io.github.sfaguiar.harvester.server.HarvesterServerEntrypoint"]
+    "server": ["io.github.sfaguiar.harvester.server.HarvesterServerEntrypoint"],
+    "stationapi:event_bus_client": [
+      "io.github.sfaguiar.harvester.client.input.HarvesterKeyBindingListener"
+    ]
   },
   "mixins": ["harvester.mixins.json"],
   "depends": {
