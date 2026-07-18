@@ -1,5 +1,6 @@
 package io.github.sfaguiar.harvester.client;
 
+import io.github.sfaguiar.harvester.config.HarvesterConfig;
 import io.github.sfaguiar.harvester.core.LegacyTwentySixNeighborhood;
 import io.github.sfaguiar.harvester.core.NeighborhoodPolicy;
 
@@ -34,10 +35,16 @@ import io.github.sfaguiar.harvester.core.NeighborhoodPolicy;
  * remains fully implemented and tested; it is simply not wired in here.
  * Nothing here introduces a runtime-configurable choice between the two —
  * that remains future work, not implemented by this class.
+ *
+ * <p>Runtime-configurable choice now exists ({@code config.NeighborhoodChoice},
+ * consumed via {@link HarvesterConfigState}); {@link #INSTANCE} derives from
+ * {@link HarvesterConfig#DEFAULT_NEIGHBORHOOD} so the "which policy is the
+ * default" fact has exactly one source, not one hard-coded here and another
+ * in {@code config}.
  */
 final class DefaultHarvestNeighborhoodPolicy {
 
-    static final NeighborhoodPolicy INSTANCE = new LegacyTwentySixNeighborhood();
+    static final NeighborhoodPolicy INSTANCE = HarvesterConfig.DEFAULT_NEIGHBORHOOD.toPolicy();
 
     private DefaultHarvestNeighborhoodPolicy() {
     }

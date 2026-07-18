@@ -40,7 +40,9 @@ import net.modificationstation.stationapi.api.registry.tag.BlockTags;
  * trunk shapes, accepting that diagonally-adjacent but otherwise separate
  * structures may merge into one discovered plan.
  * {@link io.github.sfaguiar.harvester.core.OrthogonalSixNeighborhood}
- * remains fully implemented and tested; it is simply not wired in here.
+ * remains fully implemented and tested; it is only used when
+ * {@code config/harvester.properties}' {@code neighborhood} property
+ * selects it (see {@link HarvesterConfigState}).
  *
  * <p><strong>This method itself is not unit-testable in isolation:</strong>
  * {@link BlockState} and {@link BlockTags} require StationAPI's registry to
@@ -61,16 +63,6 @@ import net.modificationstation.stationapi.api.registry.tag.BlockTags;
  * establish that.
  */
 public final class SingleplayerHarvestDiscoveryAdapter {
-
-    /**
-     * Diagnostic-only chain limit. Not sourced from any production
-     * configuration (none exists yet) and not a decision about the 2.x
-     * port's eventual default — see
-     * {@code better-beta-program/docs/operations/OPEN_QUESTIONS.md} Q0002,
-     * whose adoption decision remains the repository owner's. This value
-     * only bounds the diagnostic BFS run below.
-     */
-    private static final int DIAGNOSTIC_LIMIT = 64;
 
     private SingleplayerHarvestDiscoveryAdapter() {
     }
@@ -104,13 +96,13 @@ public final class SingleplayerHarvestDiscoveryAdapter {
         BlockGroupView groupView = coordinate ->
                 world.getBlockState(coordinate.x(), coordinate.y(), coordinate.z())
                         .isIn(BlockTags.LOGS);
-        NeighborhoodPolicy neighborhoodPolicy = DefaultHarvestNeighborhoodPolicy.INSTANCE;
+        NeighborhoodPolicy neighborhoodPolicy = HarvesterConfigState.current().neighborhoodPolicy();
 
         HarvestRequest request = new HarvestRequest(
                 new BlockCoordinate(originX, originY, originZ),
                 preBreakBlockId,
                 true,
-                DIAGNOSTIC_LIMIT
+                HarvesterConfigState.current().maxChain()
         );
 
         return ConnectedBlockFinder.discover(request, groupView, neighborhoodPolicy);

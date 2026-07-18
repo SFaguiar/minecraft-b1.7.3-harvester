@@ -34,17 +34,51 @@ canopy detection, or leaf handling — see "Permanently out of parity scope" bel
 - Missing configuration uses defaults. Invalid values must fail safely and produce a
   useful diagnostic instead of corrupting a world.
 
+**Implemented (minimal autonomous config, no external dependency, no GUI):**
+`config/harvester.properties`, resolved via Fabric Loader's config directory
+(`FabricLoader.getInstance().getConfigDir()`), loaded once at client startup
+(`HarvesterClientEntrypoint`) and consumed by `SingleplayerHarvestExecutor`,
+`SingleplayerHarvestDiscoveryAdapter`, and the break-observer Mixin through
+`HarvesterConfigState`. A missing file is created with these defaults, never
+treated as an error.
+
+| Property | Default | Notes |
+| --- | --- | --- |
+| `enabled` | `true` | Gates only the automatic additional-block chain; `false` never blocks the manual origin break. |
+| `maxChain` | `64` | Total blocks per activation, including the origin block. Invalid (non-integer, `< 1`, or `> 100`) falls back to `64`. `100` is the largest limit the legacy Harvester's own UI ever exposed. |
+| `neighborhood` | `legacy_26` | `legacy_26` or `orthogonal_6`. Invalid value falls back to `legacy_26`. |
+| `diagnosticLogging` | `false` | When `false`, suppresses per-candidate and durability-snapshot debug/info logs; warnings and errors always log. |
+
+Any missing or invalid property falls back to that property's own default with
+at most one warning logged; unknown properties are ignored. The activation key
+itself is intentionally **not** in this file — it stays configurable only
+through the vanilla controls screen (`HarvesterKeyBindingListener`), per the
+"no duplicated configuration surface" rule. Example file:
+
+```properties
+enabled=true
+maxChain=64
+neighborhood=legacy_26
+diagnosticLogging=false
+```
+
 ## Eligible blocks and tools
 
-- Logs form one wood group and require an appropriate axe. **Decided** (see
-  `better-beta-program/docs/operations/OPEN_QUESTIONS.md` Q0003, `DECIDED`):
-  the 2.x port groups by the semantic tag `BlockTags.LOGS`/`c:logs`
+- Logs form one wood group, classified by the semantic tag `BlockTags.LOGS`/
+  `c:logs` rather than raising a Harvester-specific tool requirement.
+  **Decided** (see `better-beta-program/docs/operations/OPEN_QUESTIONS.md`
+  Q0003, `DECIDED`): the 2.x port groups by this tag
   (`state.isIn(BlockTags.LOGS)`), not by raw block ID or metadata — every log
   species sharing that tag chains together, mirroring the legacy's
   ID-only (metadata-blind) grouping in effect, while additionally recognizing
   correctly-tagged logs from other mods. Already implemented in
   `SingleplayerHarvestDiscoveryAdapter` and exercised in real runtime
-  (`CLM-0019`).
+  (`CLM-0019`). Vanilla Beta 1.7.3 does not require a tool to harvest logs;
+  the Harvester imposes no axe requirement of its own — each block is broken
+  through the ordinary vanilla flow, which accepts an empty hand for wood.
+  Validated in real runtime: a full additional-candidate chain completed
+  successfully with no tool held. Do not read this bullet as documenting a
+  future axe requirement as already-implemented behavior — none exists today.
 - Coal, iron, gold, diamond, redstone, and lapis form distinct ore groups and require
   an appropriate pickaxe. **Decided** (Q0005/Q0006, both `DECIDED`): redstone
   groups by `BlockTags.REDSTONE_ORES`/`c:ores/redstone` (covering both the lit

@@ -1,5 +1,6 @@
 package io.github.sfaguiar.harvester.mixin.client;
 
+import io.github.sfaguiar.harvester.client.HarvesterConfigState;
 import io.github.sfaguiar.harvester.client.HarvesterHeldItemSnapshot;
 import io.github.sfaguiar.harvester.client.SingleplayerHarvestDiscoveryAdapter;
 import io.github.sfaguiar.harvester.client.SingleplayerHarvestExecutor;
@@ -100,9 +101,15 @@ abstract class SingleplayerInteractionManagerObserverMixin
             // discovery, no plan, no further break) and no field can be
             // confused with the external break's context — which was
             // already copied into locals before the internal call began.
-            HarvesterEntrypoint.LOGGER.debug(
-                    "[HARVEST-EXEC] Reentrant break observed; observer skipped for internal call."
-            );
+            // Fires once per additional block in the chain — genuine
+            // per-candidate volume, gated the same as the executor's own
+            // per-candidate logs so diagnosticLogging=false actually
+            // suppresses it.
+            if (HarvesterConfigState.current().diagnosticLogging()) {
+                HarvesterEntrypoint.LOGGER.debug(
+                        "[HARVEST-EXEC] Reentrant break observed; observer skipped for internal call."
+                );
+            }
             return;
         }
 
@@ -162,6 +169,19 @@ abstract class SingleplayerInteractionManagerObserverMixin
                 postBreakBlockId
         );
 
+        if (!HarvesterConfigState.current().enabled()) {
+            // Guard discovery itself, not just execution: when the
+            // automatic chain is disabled there is no reason to run BFS at
+            // all. SingleplayerHarvestExecutor#executeChain still repeats
+            // this same check independently (defense in depth — the two
+            // guards do not share state), so a future caller that reaches
+            // the executor by another path is still stopped there.
+            HarvesterEntrypoint.LOGGER.debug(
+                    "[HARVEST-EXEC] Discovery skipped: automatic chain disabled by configuration."
+            );
+            return;
+        }
+
         HarvestPlan plan = logHarvestPlanIfEligible(x, y, z, blockId, blockMeta, blockState);
         if (plan == null) {
             return;
@@ -216,7 +236,7 @@ abstract class SingleplayerInteractionManagerObserverMixin
                 plan.limitReached()
         );
 
-        if (HarvesterEntrypoint.LOGGER.isDebugEnabled()) {
+        if (HarvesterConfigState.current().diagnosticLogging() && HarvesterEntrypoint.LOGGER.isDebugEnabled()) {
             HarvesterEntrypoint.LOGGER.debug(
                     "[HARVEST-PLAN] includedBlocks={}", plan.includedBlocks()
             );

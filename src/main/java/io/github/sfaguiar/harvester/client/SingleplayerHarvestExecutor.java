@@ -66,6 +66,10 @@ public final class SingleplayerHarvestExecutor {
             HarvesterHeldItemSnapshot originHeldItemBefore,
             HarvesterHeldItemSnapshot originHeldItemAfter
     ) {
+        if (!HarvesterConfigState.current().enabled()) {
+            HarvesterEntrypoint.LOGGER.debug("[HARVEST-EXEC] Skipped: automatic chain disabled by configuration.");
+            return SingleplayerHarvestExecutionResult.SKIPPED_DISABLED;
+        }
         if (!HarvesterClientActivationState.isActive()) {
             HarvesterEntrypoint.LOGGER.debug("[HARVEST-EXEC] Skipped: activation key not held.");
             return SingleplayerHarvestExecutionResult.SKIPPED_INACTIVE;
@@ -75,13 +79,16 @@ public final class SingleplayerHarvestExecutor {
             return SingleplayerHarvestExecutionResult.SKIPPED_INACTIVE;
         }
 
-        HarvesterEntrypoint.LOGGER.debug(
-                "[HARVEST-DURABILITY] origin pre-break: {}", originHeldItemBefore
-        );
-        HarvesterEntrypoint.LOGGER.debug(
-                "[HARVEST-DURABILITY] origin post-break: {} changed={}",
-                originHeldItemAfter, !originHeldItemAfter.sameIdentityAs(originHeldItemBefore)
-        );
+        boolean diagnosticLogging = HarvesterConfigState.current().diagnosticLogging();
+        if (diagnosticLogging) {
+            HarvesterEntrypoint.LOGGER.debug(
+                    "[HARVEST-DURABILITY] origin pre-break: {}", originHeldItemBefore
+            );
+            HarvesterEntrypoint.LOGGER.debug(
+                    "[HARVEST-DURABILITY] origin post-break: {} changed={}",
+                    originHeldItemAfter, !originHeldItemAfter.sameIdentityAs(originHeldItemBefore)
+            );
+        }
         if (!originHeldItemAfter.sameIdentityAs(originHeldItemBefore)) {
             HarvesterEntrypoint.LOGGER.info(
                     "[HARVEST-EXEC] Chain not started: held item changed identity during the origin's own manual break "
@@ -133,20 +140,23 @@ public final class SingleplayerHarvestExecutor {
             }
 
             HarvesterHeldItemSnapshot before = HarvesterHeldItemSnapshot.capture(heldItem(minecraft));
-            HarvesterEntrypoint.LOGGER.debug(
-                    "[HARVEST-DURABILITY] candidate[{}] pre-break: {}", index, before
-            );
-
-            HarvesterEntrypoint.LOGGER.info(
-                    "[HARVEST-EXEC] Chain candidate {}/{}: attempting break at {} (successesSoFar={})",
-                    index + 1, totalPlanned, candidate, successes
-            );
+            if (diagnosticLogging) {
+                HarvesterEntrypoint.LOGGER.debug(
+                        "[HARVEST-DURABILITY] candidate[{}] pre-break: {}", index, before
+                );
+                HarvesterEntrypoint.LOGGER.info(
+                        "[HARVEST-EXEC] Chain candidate {}/{}: attempting break at {} (successesSoFar={})",
+                        index + 1, totalPlanned, candidate, successes
+                );
+            }
             boolean broke = interactionManager.breakBlock(candidate.x(), candidate.y(), candidate.z(), direction);
 
             if (!broke) {
-                HarvesterEntrypoint.LOGGER.info(
-                        "[HARVEST-EXEC] Chain candidate {}/{} rejected: {}", index + 1, totalPlanned, candidate
-                );
+                if (diagnosticLogging) {
+                    HarvesterEntrypoint.LOGGER.info(
+                            "[HARVEST-EXEC] Chain candidate {}/{} rejected: {}", index + 1, totalPlanned, candidate
+                    );
+                }
                 stopReason = SingleplayerHarvestExecutionResult.STOPPED_BREAK_REJECTED;
                 break;
             }
@@ -154,13 +164,15 @@ public final class SingleplayerHarvestExecutor {
             successes++;
             HarvesterHeldItemSnapshot after = HarvesterHeldItemSnapshot.capture(heldItem(minecraft));
             boolean toolChanged = !after.sameIdentityAs(before);
-            HarvesterEntrypoint.LOGGER.debug(
-                    "[HARVEST-DURABILITY] candidate[{}] post-break: {} changed={}", index, after, toolChanged
-            );
-            HarvesterEntrypoint.LOGGER.info(
-                    "[HARVEST-EXEC] Chain candidate {}/{} succeeded: {} (successesSoFar={})",
-                    index + 1, totalPlanned, candidate, successes
-            );
+            if (diagnosticLogging) {
+                HarvesterEntrypoint.LOGGER.debug(
+                        "[HARVEST-DURABILITY] candidate[{}] post-break: {} changed={}", index, after, toolChanged
+                );
+                HarvesterEntrypoint.LOGGER.info(
+                        "[HARVEST-EXEC] Chain candidate {}/{} succeeded: {} (successesSoFar={})",
+                        index + 1, totalPlanned, candidate, successes
+                );
+            }
 
             if (toolChanged) {
                 HarvesterEntrypoint.LOGGER.info(

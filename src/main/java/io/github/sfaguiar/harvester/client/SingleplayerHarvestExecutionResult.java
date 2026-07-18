@@ -6,6 +6,8 @@ package io.github.sfaguiar.harvester.client;
  * extensibility surface and must not grow into a hierarchy.
  */
 public enum SingleplayerHarvestExecutionResult {
+    /** The automatic chain is disabled by configuration ({@code enabled=false}). */
+    SKIPPED_DISABLED,
     /** Activation key not held when the chain would have started. */
     SKIPPED_INACTIVE,
     /** Another Harvester-initiated break was already in flight. */
