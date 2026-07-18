@@ -26,8 +26,15 @@ public enum SingleplayerHarvestExecutionResult {
     STOPPED_KEY_RELEASED,
     /** Stopped: the world, player, or interaction manager became unavailable mid-chain. */
     STOPPED_ENVIRONMENT_INVALID,
-    /** Stopped: a candidate failed immediate revalidation (no longer present or no longer an eligible log). */
+    /** Stopped: a candidate failed immediate revalidation (no longer present or no longer a member of the resolved group). */
     STOPPED_CANDIDATE_INVALID,
+    /**
+     * Stopped: an ore candidate revalidated as still a group member, but the
+     * currently held item can no longer correctly harvest it (empty hand,
+     * wrong tool tier, or the item changed since the origin). Never reached
+     * for a log chain.
+     */
+    STOPPED_TOOL_UNSUITABLE,
     /** Stopped: {@code breakBlock} returned {@code false} for a candidate. */
     STOPPED_BREAK_REJECTED,
     /** Stopped: the held item's identity changed (broke or was replaced) immediately after a successful break. */

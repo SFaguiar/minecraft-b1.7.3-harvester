@@ -2,13 +2,14 @@ package io.github.sfaguiar.harvester.client;
 
 import io.github.sfaguiar.harvester.client.input.HarvesterClientActivationState;
 import io.github.sfaguiar.harvester.core.BlockCoordinate;
+import io.github.sfaguiar.harvester.core.HarvestGroup;
 import io.github.sfaguiar.harvester.core.HarvestPlan;
 import io.github.sfaguiar.harvester.platform.HarvesterEntrypoint;
 import net.minecraft.client.InteractionManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.item.ItemStack;
 import net.minecraft.world.World;
-import net.modificationstation.stationapi.api.registry.tag.BlockTags;
+import net.modificationstation.stationapi.api.block.BlockState;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -18,16 +19,19 @@ import java.util.List;
  * {@link HarvestPlan} - the plan's own limit (which already includes the
  * origin, per {@code maxChain} semantics) is respected as-is; this class
  * never recomputes or widens it, it only walks the plan's deterministic
- * order.
+ * order. Works for logs and ores alike, driven entirely by the resolved
+ * {@link HarvestGroup} passed in - no group-kind-specific branching lives
+ * here beyond {@link HarvestToolCompatibility#requiresToolCheck}.
  *
  * <p>Every break is performed exclusively through the game's normal
  * singleplayer flow, {@code InteractionManager.breakBlock(int, int, int,
  * int)} (virtual-dispatched to {@code SingleplayerInteractionManager}'s
  * override), so the ordinary pipeline decides harvestability, applies
  * durability, produces drops, and runs block/tool/StationAPI/mod hooks.
- * This class never mutates the world directly and never touches drops,
- * durability, or inventory itself - it only <em>reads</em> the held item's
- * state for the {@code [HARVEST-DURABILITY]} diagnostic.
+ * This class never mutates the world directly, never touches drops or
+ * durability itself, and never damages a tool directly - it only
+ * <em>reads</em> the held item's state for the {@code [HARVEST-DURABILITY]}
+ * diagnostic and the ore tool-harvestability gate.
  *
  * <p><strong>Direction parameter</strong>: unchanged reasoning from the
  * single-break slice - direct bytecode inspection of the mapped merged jar
@@ -56,12 +60,16 @@ public final class SingleplayerHarvestExecutor {
      * originHeldItemAfter} are the origin's own manual-break snapshots,
      * already captured by the caller (never re-derived here); if they
      * indicate the tool changed identity during that manual break, the
-     * chain is never started at all.
+     * chain is never started at all. {@code group} is the same resolved
+     * group discovery already used to build the plan - re-supplied here
+     * (not re-resolved) so candidate revalidation stays consistent with
+     * what was actually discovered.
      */
     public static SingleplayerHarvestExecutionResult executeChain(
             Minecraft minecraft,
             InteractionManager interactionManager,
             HarvestPlan plan,
+            HarvestGroup group,
             int direction,
             HarvesterHeldItemSnapshot originHeldItemBefore,
             HarvesterHeldItemSnapshot originHeldItemAfter
@@ -98,6 +106,8 @@ public final class SingleplayerHarvestExecutor {
             return SingleplayerHarvestExecutionResult.ORIGIN_TOOL_CHANGED_BEFORE_CHAIN_START;
         }
 
+        boolean requiresToolCheck = HarvestToolCompatibility.requiresToolCheck(group.kind());
+
         BlockCoordinate origin = plan.origin();
         List<BlockCoordinate> candidates = new ArrayList<>();
         for (BlockCoordinate included : plan.includedBlocks()) {
@@ -112,8 +122,8 @@ public final class SingleplayerHarvestExecutor {
         }
 
         HarvesterEntrypoint.LOGGER.info(
-                "[HARVEST-EXEC] Chain starting: origin={} planTotal={} totalPlanned={}",
-                origin, plan.totalIncluded(), totalPlanned
+                "[HARVEST-EXEC] Chain starting: origin={} group={} planTotal={} totalPlanned={}",
+                origin, group.kind(), plan.totalIncluded(), totalPlanned
         );
 
         int successes = 0;
@@ -130,13 +140,28 @@ public final class SingleplayerHarvestExecutor {
             }
 
             BlockCoordinate candidate = candidates.get(index);
-            if (!isStillEligible(minecraft.world, candidate)) {
+            BlockState candidateState = candidateStateIfPresent(minecraft.world, candidate);
+            if (candidateState == null || !group.matches(StationBlockDescriptors.describe(candidateState))) {
                 HarvesterEntrypoint.LOGGER.debug(
                         "[HARVEST-EXEC] Chain candidate {}/{} no longer valid: {}",
                         index + 1, totalPlanned, candidate
                 );
                 stopReason = SingleplayerHarvestExecutionResult.STOPPED_CANDIDATE_INVALID;
                 break;
+            }
+
+            if (requiresToolCheck) {
+                ItemStack currentHeldItem = heldItem(minecraft);
+                if (!HarvestToolCompatibility.canHarvest(
+                        minecraft, currentHeldItem, candidate.x(), candidate.y(), candidate.z(), candidateState
+                )) {
+                    HarvesterEntrypoint.LOGGER.debug(
+                            "[HARVEST-EXEC] Chain candidate {}/{} tool no longer suitable: {}",
+                            index + 1, totalPlanned, candidate
+                    );
+                    stopReason = SingleplayerHarvestExecutionResult.STOPPED_TOOL_UNSUITABLE;
+                    break;
+                }
             }
 
             HarvesterHeldItemSnapshot before = HarvesterHeldItemSnapshot.capture(heldItem(minecraft));
@@ -186,8 +211,8 @@ public final class SingleplayerHarvestExecutor {
         }
 
         HarvesterEntrypoint.LOGGER.info(
-                "[HARVEST-EXEC] Chain finished: origin={} totalPlanned={} successes={} stopReason={}",
-                origin, totalPlanned, successes, stopReason
+                "[HARVEST-EXEC] Chain finished: origin={} group={} totalPlanned={} successes={} stopReason={}",
+                origin, group.kind(), totalPlanned, successes, stopReason
         );
         return stopReason;
     }
@@ -197,14 +222,15 @@ public final class SingleplayerHarvestExecutor {
                 && interactionManager != null;
     }
 
-    private static boolean isStillEligible(World world, BlockCoordinate candidate) {
+    /** {@code null} when the candidate position no longer holds a real block (air). */
+    private static BlockState candidateStateIfPresent(World world, BlockCoordinate candidate) {
         int x = candidate.x();
         int y = candidate.y();
         int z = candidate.z();
         if (world.getBlockId(x, y, z) == 0) {
-            return false;
+            return null;
         }
-        return world.getBlockState(x, y, z).isIn(BlockTags.LOGS);
+        return world.getBlockState(x, y, z);
     }
 
     private static ItemStack heldItem(Minecraft minecraft) {

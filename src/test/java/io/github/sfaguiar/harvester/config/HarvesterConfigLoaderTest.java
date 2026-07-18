@@ -23,6 +23,8 @@ final class HarvesterConfigLoaderTest {
         assertEquals(HarvesterConfig.DEFAULT_MAX_CHAIN, result.config().maxChain());
         assertEquals(HarvesterConfig.DEFAULT_NEIGHBORHOOD, result.config().neighborhood());
         assertEquals(HarvesterConfig.DEFAULT_DIAGNOSTIC_LOGGING, result.config().diagnosticLogging());
+        assertEquals(HarvesterConfig.DEFAULT_HARVEST_LOGS, result.config().harvestLogs());
+        assertEquals(HarvesterConfig.DEFAULT_HARVEST_ORES, result.config().harvestOres());
         assertTrue(result.warnings().isEmpty());
     }
 
@@ -40,7 +42,12 @@ final class HarvesterConfigLoaderTest {
         assertTrue(result.warnings().isEmpty());
 
         String written = Files.readString(configFile, StandardCharsets.UTF_8);
+        assertTrue(written.contains("enabled=true"));
         assertTrue(written.contains("maxChain=64"));
+        assertTrue(written.contains("neighborhood=legacy_26"));
+        assertTrue(written.contains("diagnosticLogging=false"));
+        assertTrue(written.contains("harvestLogs=true"));
+        assertTrue(written.contains("harvestOres=true"));
     }
 
     @Test
@@ -60,6 +67,8 @@ final class HarvesterConfigLoaderTest {
         properties.setProperty("maxChain", "32");
         properties.setProperty("neighborhood", "orthogonal_6");
         properties.setProperty("diagnosticLogging", "true");
+        properties.setProperty("harvestLogs", "false");
+        properties.setProperty("harvestOres", "false");
 
         HarvesterConfigLoader.LoadResult result = HarvesterConfigLoader.parse(properties);
 
@@ -67,7 +76,74 @@ final class HarvesterConfigLoaderTest {
         assertEquals(32, result.config().maxChain());
         assertEquals(NeighborhoodChoice.ORTHOGONAL_6, result.config().neighborhood());
         assertTrue(result.config().diagnosticLogging());
+        assertFalse(result.config().harvestLogs());
+        assertFalse(result.config().harvestOres());
         assertTrue(result.warnings().isEmpty());
+    }
+
+    @Test
+    void parse_harvestLogsFalse_onlyDisablesLogs() {
+        Properties properties = new Properties();
+        properties.setProperty("harvestLogs", "false");
+
+        HarvesterConfigLoader.LoadResult result = HarvesterConfigLoader.parse(properties);
+
+        assertFalse(result.config().harvestLogs());
+        assertTrue(result.config().harvestOres());
+        assertTrue(result.warnings().isEmpty());
+    }
+
+    @Test
+    void parse_harvestOresFalse_onlyDisablesOres() {
+        Properties properties = new Properties();
+        properties.setProperty("harvestOres", "false");
+
+        HarvesterConfigLoader.LoadResult result = HarvesterConfigLoader.parse(properties);
+
+        assertTrue(result.config().harvestLogs());
+        assertFalse(result.config().harvestOres());
+        assertTrue(result.warnings().isEmpty());
+    }
+
+    @Test
+    void parse_invalidHarvestLogs_fallsBackToDefaultWithOneWarning() {
+        Properties properties = new Properties();
+        properties.setProperty("harvestLogs", "not-a-boolean");
+
+        HarvesterConfigLoader.LoadResult result = HarvesterConfigLoader.parse(properties);
+
+        assertEquals(HarvesterConfig.DEFAULT_HARVEST_LOGS, result.config().harvestLogs());
+        assertEquals(1, result.warnings().size());
+    }
+
+    @Test
+    void parse_invalidHarvestOres_fallsBackToDefaultWithOneWarning() {
+        Properties properties = new Properties();
+        properties.setProperty("harvestOres", "not-a-boolean");
+
+        HarvesterConfigLoader.LoadResult result = HarvesterConfigLoader.parse(properties);
+
+        assertEquals(HarvesterConfig.DEFAULT_HARVEST_ORES, result.config().harvestOres());
+        assertEquals(1, result.warnings().size());
+    }
+
+    @Test
+    void parse_multipleSimultaneousInvalidProperties_warnOnceEachAndFallBackIndependently() {
+        Properties properties = new Properties();
+        properties.setProperty("enabled", "notabool");
+        properties.setProperty("maxChain", "101");
+        properties.setProperty("neighborhood", "bogus");
+        properties.setProperty("harvestLogs", "notabool");
+        properties.setProperty("harvestOres", "notabool");
+
+        HarvesterConfigLoader.LoadResult result = HarvesterConfigLoader.parse(properties);
+
+        assertEquals(5, result.warnings().size());
+        assertEquals(HarvesterConfig.DEFAULT_ENABLED, result.config().enabled());
+        assertEquals(HarvesterConfig.DEFAULT_MAX_CHAIN, result.config().maxChain());
+        assertEquals(HarvesterConfig.DEFAULT_NEIGHBORHOOD, result.config().neighborhood());
+        assertEquals(HarvesterConfig.DEFAULT_HARVEST_LOGS, result.config().harvestLogs());
+        assertEquals(HarvesterConfig.DEFAULT_HARVEST_ORES, result.config().harvestOres());
     }
 
     @Test
@@ -198,6 +274,28 @@ final class HarvesterConfigLoaderTest {
         assertEquals(NeighborhoodChoice.ORTHOGONAL_6, result.config().neighborhood());
         assertTrue(result.config().diagnosticLogging());
         assertTrue(result.warnings().isEmpty());
+    }
+
+    /**
+     * A file written before {@code harvestLogs}/{@code harvestOres} existed
+     * must keep loading cleanly (both default to {@code true}, no warning)
+     * and — just as important — must not be rewritten on disk merely to add
+     * the two new lines; only a genuinely missing file is ever (re)written.
+     */
+    @Test
+    void loadOrCreateDefaults_preExistingFileWithoutNewProperties_defaultsBothToTrueAndFileIsUntouched(
+            @TempDir Path dir
+    ) throws IOException {
+        Path configFile = dir.resolve("harvester.properties");
+        String oldFormatContents = "enabled=false\nmaxChain=16\nneighborhood=orthogonal_6\ndiagnosticLogging=true\n";
+        Files.writeString(configFile, oldFormatContents, StandardCharsets.UTF_8);
+
+        HarvesterConfigLoader.LoadResult result = HarvesterConfigLoader.loadOrCreateDefaults(configFile);
+
+        assertTrue(result.config().harvestLogs());
+        assertTrue(result.config().harvestOres());
+        assertTrue(result.warnings().isEmpty());
+        assertEquals(oldFormatContents, Files.readString(configFile, StandardCharsets.UTF_8));
     }
 
     @Test

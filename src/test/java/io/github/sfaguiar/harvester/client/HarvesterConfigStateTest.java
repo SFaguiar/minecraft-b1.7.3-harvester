@@ -30,7 +30,7 @@ final class HarvesterConfigStateTest {
 
     @Test
     void setForTesting_updatesWhatCurrentReturns() {
-        HarvesterConfig custom = new HarvesterConfig(false, 8, NeighborhoodChoice.ORTHOGONAL_6, true);
+        HarvesterConfig custom = new HarvesterConfig(false, 8, NeighborhoodChoice.ORTHOGONAL_6, true, true, true);
 
         HarvesterConfigState.setForTesting(custom);
 

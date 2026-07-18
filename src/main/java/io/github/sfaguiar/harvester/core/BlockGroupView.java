@@ -34,4 +34,15 @@ public interface BlockGroupView {
     static BlockGroupView byId(BlockWorldView view, BlockMatcher matcher) {
         return coordinate -> matcher.matches(view.getBlockId(coordinate));
     }
+
+    /**
+     * Composes a {@link BlockDescriptorView} (read a {@link BlockDescriptor}
+     * at a coordinate) with an already-resolved {@link HarvestGroup} (decide
+     * if a descriptor belongs to that group) into a single membership test.
+     * The generalized, tag/identity-aware counterpart of {@link #byId}, used
+     * by {@code SingleplayerHarvestDiscoveryAdapter} for logs and ores alike.
+     */
+    static BlockGroupView byDescriptor(BlockDescriptorView view, HarvestGroup group) {
+        return coordinate -> group.matches(view.describe(coordinate));
+    }
 }

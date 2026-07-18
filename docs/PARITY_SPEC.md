@@ -47,19 +47,30 @@ treated as an error.
 | `enabled` | `true` | Gates only the automatic additional-block chain; `false` never blocks the manual origin break. |
 | `maxChain` | `64` | Total blocks per activation, including the origin block. Invalid (non-integer, `< 1`, or `> 100`) falls back to `64`. `100` is the largest limit the legacy Harvester's own UI ever exposed. |
 | `neighborhood` | `legacy_26` | `legacy_26` or `orthogonal_6`. Invalid value falls back to `legacy_26`. |
-| `diagnosticLogging` | `false` | When `false`, suppresses per-candidate and durability-snapshot debug/info logs; warnings and errors always log. |
+| `diagnosticLogging` | `false` | When `false`, suppresses per-candidate and durability-snapshot debug/info logs; warnings and errors always log. Applies to logs and ores alike. |
+| `harvestLogs` | `true` | Gates only the automatic log chain; `false` never blocks breaking a log by hand. |
+| `harvestOres` | `true` | Gates only automatic ore chains; `false` never blocks breaking an ore by hand. |
 
-Any missing or invalid property falls back to that property's own default with
-at most one warning logged; unknown properties are ignored. The activation key
-itself is intentionally **not** in this file — it stays configurable only
-through the vanilla controls screen (`HarvesterKeyBindingListener`), per the
-"no duplicated configuration surface" rule. Example file:
+`enabled=false` gates every automatic chain before discovery even runs;
+`harvestLogs`/`harvestOres` gate only their own group kind, independently, and
+both may be `true` at once. `maxChain`, `neighborhood`, and `diagnosticLogging`
+apply uniformly to logs and ores — there is no separate limit or connectivity
+setting per group kind. Any missing or invalid property falls back to that
+property's own default with at most one warning logged; unknown properties are
+ignored; a pre-existing file missing the two newer properties is never
+rewritten to add them — it loads with both defaulting to `true`. The
+activation key itself is intentionally **not** in this file — it stays
+configurable only through the vanilla controls screen
+(`HarvesterKeyBindingListener`), per the "no duplicated configuration
+surface" rule. Example file:
 
 ```properties
 enabled=true
 maxChain=64
 neighborhood=legacy_26
 diagnosticLogging=false
+harvestLogs=true
+harvestOres=true
 ```
 
 ## Eligible blocks and tools
@@ -89,8 +100,66 @@ diagnosticLogging=false
   new): mod-added ores of the same material chain together via a shared
   specific `c:ores/<material>` tag (never the generic umbrella `c:ores` tag
   alone), with a conservative same-registered-block-identity fallback for
-  mods that only tag the umbrella tag. None of this is implemented in code
-  yet — the decisions are closed, the implementation gate remains open.
+  mods that only tag the umbrella tag. **Implemented and validated in real
+  runtime** (`HarvestGroupResolver`/`HarvestGroup` in `core`,
+  `StationBlockDescriptors` adapter):
+  - **Group model**: an origin resolves to exactly one of three kinds, in
+    this priority order — `LOGS` (a block tagged both as a log and an ore,
+    a datapack/mod misclassification, is always treated as a log; this
+    priority is enforced for every candidate too, not just the origin, so
+    an ore chain can never absorb a log block); `ORE_SPECIFIC_TAGS` (the
+    origin's full captured set of specific material tags — a candidate
+    matches if it shares at least one exact tag, never by prefix); or
+    `ORE_IDENTITY_FALLBACK` (only when the origin is in the generic `c:ores`
+    aggregator but carries no specific tag — the candidate must then share
+    the exact same registered block identity, never a class name,
+    translated name, or metadata value; two different blocks each only in
+    `c:ores` never group together). A specific tag is detected generically
+    as any tag with `namespace=c`, `path` starting with `ores/` and a
+    non-empty suffix — enumerated from the block's own tags
+    (`BlockState.streamTags()`), never a fixed list of `BlockTags`
+    constants, so a correctly-tagged modded ore (e.g. `c:ores/tin`)
+    participates without a code change. A block with no log tag and no ore
+    tag (generic or specific) is ineligible: the manual break proceeds
+    normally, no BFS runs, no chain starts, no error is raised.
+  - **Tool safety**: the automatic ore chain never starts unless the
+    pre-break held item can *correctly* harvest the origin, via the
+    authoritative StationAPI check
+    (`ItemStack.isSuitableFor(PlayerEntity, BlockView, BlockPos,
+    BlockState)`, confirmed by bytecode to delegate, for an ordinary item,
+    to the same per-item harvestability check the normal break pipeline
+    itself consults) — never a hardcoded pickaxe class/ID check. Logs never
+    gate on tool at all; an empty hand keeps working for logs exactly as
+    before. Before every additional ore break, both the candidate's group
+    membership and the currently held item's harvestability are
+    revalidated fresh; the chain stops (without breaking that candidate) at
+    the first failure of either. A block that itself breaks the tool still
+    counts as a success, and the chain stops immediately after — unchanged
+    from the existing durability-driven stop.
+
+  Implemented and covered by unit tests (see `HarvestGroupResolverTest`,
+  `HarvestGroupTest`, `HarvestGroupConnectedBlockFinderIntegrationTest`,
+  `HarvestToolCompatibilityTest`). Confirmed in real singleplayer runtime:
+  log regression unaffected by the ore addition; coal, iron, gold, and lit
+  redstone each producing their own multi-block `CHAIN_COMPLETED` (up to
+  34 additional blocks for coal), with adjacent different-material ore
+  never merging into one plan; an empty hand and a wrong-tier tool each
+  correctly preventing discovery on an ore origin while leaving the
+  manual break itself unaffected; a tool breaking mid-ore-chain
+  (`STOPPED_TOOL_CHANGED`, 5 of 14 planned candidates broken, the
+  tool-breaking block itself counted as a success, nothing broken after);
+  `maxChain` and `orthogonal_6` applying to ore exactly as they already
+  did to logs; and `diagnosticLogging` gating the same per-candidate/
+  durability detail for ore as for logs. **Not fully confirmed this session**: lapis was found only as an
+  isolated block (classified correctly via its specific tag, but no
+  multi-block lapis chain was exercised), and while two lit-redstone
+  origins each produced multi-block chains, whether any unlit redstone
+  was actually swept into one of those chains was never independently
+  confirmed — no unlit redstone origin appeared on its own, but
+  `includedBlocks` (which would show the mix directly) is not emitted at
+  this `diagnosticLogging` level, and the player did not separately
+  describe the geometry. Treat lit/unlit sharing one chain as plausible,
+  not proven, pending a dedicated repetition.
 - Vanilla harvest eligibility and tool tier remain authoritative.
 - Breaking an ineligible block, using an unsuitable tool, or releasing the activation
   key preserves ordinary game behavior. In particular: a tool that cannot harvest

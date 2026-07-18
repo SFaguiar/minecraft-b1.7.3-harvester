@@ -33,6 +33,8 @@ public final class HarvesterConfigLoader {
     private static final String KEY_MAX_CHAIN = "maxChain";
     private static final String KEY_NEIGHBORHOOD = "neighborhood";
     private static final String KEY_DIAGNOSTIC_LOGGING = "diagnosticLogging";
+    private static final String KEY_HARVEST_LOGS = "harvestLogs";
+    private static final String KEY_HARVEST_ORES = "harvestOres";
 
     private static final String DEFAULT_FILE_CONTENTS =
             "# Harvester configuration.\n"
@@ -50,12 +52,21 @@ public final class HarvesterConfigLoader {
             + "\n"
             + "# neighborhood: legacy_26 (default, full 26-neighbor adjacency, matches\n"
             + "# legacy Harvester 1.x) or orthogonal_6 (face adjacency only, no diagonals).\n"
+            + "# Applies to both logs and ores.\n"
             + "neighborhood=legacy_26\n"
             + "\n"
             + "# diagnosticLogging: true or false. When false, per-candidate and\n"
             + "# durability-snapshot debug logs are suppressed; warnings and errors are\n"
-            + "# always logged regardless of this setting.\n"
-            + "diagnosticLogging=false\n";
+            + "# always logged regardless of this setting. Applies to both logs and ores.\n"
+            + "diagnosticLogging=false\n"
+            + "\n"
+            + "# harvestLogs: true or false. Controls only the automatic log chain; false\n"
+            + "# never prevents breaking a log block by hand.\n"
+            + "harvestLogs=true\n"
+            + "\n"
+            + "# harvestOres: true or false. Controls only the automatic ore chain; false\n"
+            + "# never prevents breaking an ore block by hand.\n"
+            + "harvestOres=true\n";
 
     private HarvesterConfigLoader() {
     }
@@ -94,8 +105,12 @@ public final class HarvesterConfigLoader {
         NeighborhoodChoice neighborhood = parseNeighborhood(properties, warnings);
         boolean diagnosticLogging =
                 parseBoolean(properties, KEY_DIAGNOSTIC_LOGGING, HarvesterConfig.DEFAULT_DIAGNOSTIC_LOGGING, warnings);
+        boolean harvestLogs =
+                parseBoolean(properties, KEY_HARVEST_LOGS, HarvesterConfig.DEFAULT_HARVEST_LOGS, warnings);
+        boolean harvestOres =
+                parseBoolean(properties, KEY_HARVEST_ORES, HarvesterConfig.DEFAULT_HARVEST_ORES, warnings);
         return new LoadResult(
-                new HarvesterConfig(enabled, maxChain, neighborhood, diagnosticLogging),
+                new HarvesterConfig(enabled, maxChain, neighborhood, diagnosticLogging, harvestLogs, harvestOres),
                 warnings
         );
     }

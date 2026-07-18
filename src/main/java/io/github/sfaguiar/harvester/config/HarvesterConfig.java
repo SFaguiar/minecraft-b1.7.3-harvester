@@ -1,5 +1,6 @@
 package io.github.sfaguiar.harvester.config;
 
+import io.github.sfaguiar.harvester.core.HarvestGroupKind;
 import io.github.sfaguiar.harvester.core.NeighborhoodPolicy;
 
 import java.util.Objects;
@@ -50,20 +51,31 @@ public final class HarvesterConfig {
     /** {@code diagnosticLogging} default: verbose per-candidate/durability logs off. */
     public static final boolean DEFAULT_DIAGNOSTIC_LOGGING = false;
 
+    /** {@code harvestLogs} default: the log chain runs unless disabled. */
+    public static final boolean DEFAULT_HARVEST_LOGS = true;
+
+    /** {@code harvestOres} default: the ore chain runs unless disabled. */
+    public static final boolean DEFAULT_HARVEST_ORES = true;
+
     public static final HarvesterConfig DEFAULTS = new HarvesterConfig(
-            DEFAULT_ENABLED, DEFAULT_MAX_CHAIN, DEFAULT_NEIGHBORHOOD, DEFAULT_DIAGNOSTIC_LOGGING
+            DEFAULT_ENABLED, DEFAULT_MAX_CHAIN, DEFAULT_NEIGHBORHOOD, DEFAULT_DIAGNOSTIC_LOGGING,
+            DEFAULT_HARVEST_LOGS, DEFAULT_HARVEST_ORES
     );
 
     private final boolean enabled;
     private final int maxChain;
     private final NeighborhoodChoice neighborhood;
     private final boolean diagnosticLogging;
+    private final boolean harvestLogs;
+    private final boolean harvestOres;
 
     public HarvesterConfig(
             boolean enabled,
             int maxChain,
             NeighborhoodChoice neighborhood,
-            boolean diagnosticLogging
+            boolean diagnosticLogging,
+            boolean harvestLogs,
+            boolean harvestOres
     ) {
         this.enabled = enabled;
         if (maxChain < 1) {
@@ -88,6 +100,8 @@ public final class HarvesterConfig {
         this.maxChain = maxChain;
         this.neighborhood = Objects.requireNonNull(neighborhood, "neighborhood");
         this.diagnosticLogging = diagnosticLogging;
+        this.harvestLogs = harvestLogs;
+        this.harvestOres = harvestOres;
     }
 
     /** Controls only the automatic additional-candidate chain; never the manual origin break. */
@@ -114,12 +128,34 @@ public final class HarvesterConfig {
         return diagnosticLogging;
     }
 
+    /** Gates only the log chain (kind {@code LOGS}); never the manual origin break. */
+    public boolean harvestLogs() {
+        return harvestLogs;
+    }
+
+    /** Gates only ore chains (kinds {@code ORE_SPECIFIC_TAGS}/{@code ORE_IDENTITY_FALLBACK}); never the manual origin break. */
+    public boolean harvestOres() {
+        return harvestOres;
+    }
+
+    /**
+     * Whether the automatic chain for {@code kind} is enabled by this
+     * configuration — the single place that maps a resolved
+     * {@link HarvestGroupKind} to {@link #harvestLogs()} or
+     * {@link #harvestOres()}, so no caller duplicates that mapping.
+     */
+    public boolean isHarvestEnabledFor(HarvestGroupKind kind) {
+        return kind == HarvestGroupKind.LOGS ? harvestLogs : harvestOres;
+    }
+
     @Override
     public String toString() {
         return "HarvesterConfig{enabled=" + enabled
                 + ", maxChain=" + maxChain
                 + ", neighborhood=" + neighborhood.propertyValue()
                 + ", diagnosticLogging=" + diagnosticLogging
+                + ", harvestLogs=" + harvestLogs
+                + ", harvestOres=" + harvestOres
                 + "}";
     }
 }

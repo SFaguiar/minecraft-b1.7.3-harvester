@@ -1,10 +1,12 @@
 package io.github.sfaguiar.harvester.mixin.client;
 
+import io.github.sfaguiar.harvester.client.HarvestDiscoveryOutcome;
 import io.github.sfaguiar.harvester.client.HarvesterConfigState;
 import io.github.sfaguiar.harvester.client.HarvesterHeldItemSnapshot;
 import io.github.sfaguiar.harvester.client.SingleplayerHarvestDiscoveryAdapter;
 import io.github.sfaguiar.harvester.client.SingleplayerHarvestExecutor;
 import io.github.sfaguiar.harvester.client.input.HarvesterClientActivationState;
+import io.github.sfaguiar.harvester.core.HarvestGroup;
 import io.github.sfaguiar.harvester.core.HarvestPlan;
 import io.github.sfaguiar.harvester.platform.HarvesterEntrypoint;
 import net.minecraft.client.InteractionManager;
@@ -182,8 +184,8 @@ abstract class SingleplayerInteractionManagerObserverMixin
             return;
         }
 
-        HarvestPlan plan = logHarvestPlanIfEligible(x, y, z, blockId, blockMeta, blockState);
-        if (plan == null) {
+        HarvestDiscoveryOutcome outcome = logHarvestPlanIfEligible(x, y, z, blockId, blockMeta, blockState);
+        if (outcome == null) {
             return;
         }
 
@@ -191,43 +193,50 @@ abstract class SingleplayerInteractionManagerObserverMixin
                 minecraft != null && minecraft.player != null ? minecraft.player.getHand() : null
         );
 
-        harvester$maybeExecuteChain(plan, direction, preBreakHeldItem, postBreakHeldItem);
+        harvester$maybeExecuteChain(outcome.plan(), outcome.group(), direction, preBreakHeldItem, postBreakHeldItem);
     }
 
     /**
-     * CLM-0012/CLM-0015 diagnostic: runs the pure BFS discovery core
-     * against the captured pre-break {@link BlockState}, logs the
-     * resulting plan, and returns it so the execution step can consume
-     * it. Discovery itself never mutates the world - it only runs for
-     * blocks {@link SingleplayerHarvestDiscoveryAdapter} classifies as
-     * {@code BlockTags.LOGS}; non-log breaks produce no plan at all.
-     * {@code blockId}/{@code blockMeta} are logged here purely as
-     * diagnostic metadata - neither drives the classification decision
-     * itself.
+     * CLM-0012/CLM-0015/CLM-0021 diagnostic: resolves the origin's harvest
+     * group (log, ore by specific tag, or ore by identity fallback),
+     * applies the {@code harvestLogs}/{@code harvestOres} and (for ore) the
+     * pre-break tool-harvestability gate, runs the pure BFS discovery core
+     * only if all of that passes, logs the resulting plan, and returns it
+     * together with the resolved group so the execution step can consume
+     * both. Discovery itself never mutates the world - it only runs for an
+     * origin {@link SingleplayerHarvestDiscoveryAdapter} actually resolved
+     * a group for; an ineligible, gated-off, or tool-unsuitable origin
+     * produces no plan at all. {@code blockId}/{@code blockMeta} are logged
+     * here purely as diagnostic metadata - neither drives the
+     * classification decision itself.
      *
-     * @return the diagnostic plan, or {@code null} when the broken block
-     *         was not an eligible log (or the world is unavailable)
+     * @return the discovery outcome, or {@code null} when the broken block
+     *         was ineligible, its group kind is disabled by configuration,
+     *         the held item cannot correctly harvest an ore origin, or the
+     *         world is unavailable
      */
     @Unique
-    private HarvestPlan logHarvestPlanIfEligible(
+    private HarvestDiscoveryOutcome logHarvestPlanIfEligible(
             int x, int y, int z, int blockId, int blockMeta, BlockState blockState
     ) {
         if (minecraft == null || minecraft.world == null) {
             return null;
         }
 
-        HarvestPlan plan = SingleplayerHarvestDiscoveryAdapter.discoverForCompletedBreak(
-                minecraft.world, x, y, z, blockId, blockState
+        HarvestDiscoveryOutcome outcome = SingleplayerHarvestDiscoveryAdapter.discoverForCompletedBreak(
+                minecraft, minecraft.world, x, y, z, blockId, blockState
         );
 
-        if (plan == null) {
+        if (outcome == null) {
             return null;
         }
+        HarvestPlan plan = outcome.plan();
 
         HarvesterEntrypoint.LOGGER.info(
-                "[HARVEST-PLAN] origin={} preBlockId={} preMeta={} limit={} "
+                "[HARVEST-PLAN] origin={} group={} preBlockId={} preMeta={} limit={} "
                         + "totalIncluded={} additionalCandidates={} limitReached={}",
                 plan.origin(),
+                outcome.group().kind(),
                 blockId,
                 blockMeta,
                 plan.limit(),
@@ -242,7 +251,7 @@ abstract class SingleplayerInteractionManagerObserverMixin
             );
         }
 
-        return plan;
+        return outcome;
     }
 
     /**
@@ -261,6 +270,7 @@ abstract class SingleplayerInteractionManagerObserverMixin
     @Unique
     private void harvester$maybeExecuteChain(
             HarvestPlan plan,
+            HarvestGroup group,
             int direction,
             HarvesterHeldItemSnapshot preBreakHeldItem,
             HarvesterHeldItemSnapshot postBreakHeldItem
@@ -287,7 +297,7 @@ abstract class SingleplayerInteractionManagerObserverMixin
         harvester$executingAdditionalBreak = true;
         try {
             SingleplayerHarvestExecutor.executeChain(
-                    minecraft, this, plan, direction, preBreakHeldItem, postBreakHeldItem
+                    minecraft, this, plan, group, direction, preBreakHeldItem, postBreakHeldItem
             );
         } finally {
             harvester$executingAdditionalBreak = false;
