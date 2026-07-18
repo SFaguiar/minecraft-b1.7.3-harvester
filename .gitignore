@@ -18,7 +18,7 @@ saves/
 screenshots/
 
 # Proprietary game data and legacy toolchains
-assets/
+/assets/
 instances/
 libraries/
 natives/
