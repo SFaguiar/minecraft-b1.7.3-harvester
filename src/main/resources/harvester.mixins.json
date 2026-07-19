@@ -7,6 +7,8 @@
   "client": [
     "client.SingleplayerInteractionManagerObserverMixin"
   ],
-  "server": [],
+  "server": [
+    "server.ServerPlayerEntityDisconnectMixin"
+  ],
   "injectors": { "defaultRequire": 1 }
 }

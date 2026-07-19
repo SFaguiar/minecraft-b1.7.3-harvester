@@ -57,9 +57,18 @@ public final class HarvesterConfig {
     /** {@code harvestOres} default: the ore chain runs unless disabled. */
     public static final boolean DEFAULT_HARVEST_ORES = true;
 
+    /**
+     * {@code multiplayerAllowed} default: a server never announces
+     * multiplayer support unless the operator explicitly opts in. Read
+     * only by the dedicated-server entrypoint
+     * ({@code HarvesterServerConfigState}); a client never reads or
+     * trusts this value for itself.
+     */
+    public static final boolean DEFAULT_MULTIPLAYER_ALLOWED = false;
+
     public static final HarvesterConfig DEFAULTS = new HarvesterConfig(
             DEFAULT_ENABLED, DEFAULT_MAX_CHAIN, DEFAULT_NEIGHBORHOOD, DEFAULT_DIAGNOSTIC_LOGGING,
-            DEFAULT_HARVEST_LOGS, DEFAULT_HARVEST_ORES
+            DEFAULT_HARVEST_LOGS, DEFAULT_HARVEST_ORES, DEFAULT_MULTIPLAYER_ALLOWED
     );
 
     private final boolean enabled;
@@ -68,6 +77,7 @@ public final class HarvesterConfig {
     private final boolean diagnosticLogging;
     private final boolean harvestLogs;
     private final boolean harvestOres;
+    private final boolean multiplayerAllowed;
 
     public HarvesterConfig(
             boolean enabled,
@@ -75,7 +85,8 @@ public final class HarvesterConfig {
             NeighborhoodChoice neighborhood,
             boolean diagnosticLogging,
             boolean harvestLogs,
-            boolean harvestOres
+            boolean harvestOres,
+            boolean multiplayerAllowed
     ) {
         this.enabled = enabled;
         if (maxChain < 1) {
@@ -102,6 +113,7 @@ public final class HarvesterConfig {
         this.diagnosticLogging = diagnosticLogging;
         this.harvestLogs = harvestLogs;
         this.harvestOres = harvestOres;
+        this.multiplayerAllowed = multiplayerAllowed;
     }
 
     /** Controls only the automatic additional-candidate chain; never the manual origin break. */
@@ -139,6 +151,17 @@ public final class HarvesterConfig {
     }
 
     /**
+     * Server-only: whether a dedicated server announces
+     * {@code harvester:support} to compatible peers at all. {@code false}
+     * (the default) never disconnects or breaks vanilla compatibility —
+     * it only means the server stays silent. A client never reads this
+     * field for itself; it only ever reflects what a server announced.
+     */
+    public boolean multiplayerAllowed() {
+        return multiplayerAllowed;
+    }
+
+    /**
      * Whether the automatic chain for {@code kind} is enabled by this
      * configuration — the single place that maps a resolved
      * {@link HarvestGroupKind} to {@link #harvestLogs()} or
@@ -156,6 +179,7 @@ public final class HarvesterConfig {
                 + ", diagnosticLogging=" + diagnosticLogging
                 + ", harvestLogs=" + harvestLogs
                 + ", harvestOres=" + harvestOres
+                + ", multiplayerAllowed=" + multiplayerAllowed
                 + "}";
     }
 }

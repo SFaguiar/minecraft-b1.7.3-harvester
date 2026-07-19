@@ -35,6 +35,7 @@ public final class HarvesterConfigLoader {
     private static final String KEY_DIAGNOSTIC_LOGGING = "diagnosticLogging";
     private static final String KEY_HARVEST_LOGS = "harvestLogs";
     private static final String KEY_HARVEST_ORES = "harvestOres";
+    private static final String KEY_MULTIPLAYER_ALLOWED = "multiplayerAllowed";
 
     private static final String DEFAULT_FILE_CONTENTS =
             "# Harvester configuration.\n"
@@ -66,7 +67,13 @@ public final class HarvesterConfigLoader {
             + "\n"
             + "# harvestOres: true or false. Controls only the automatic ore chain; false\n"
             + "# never prevents breaking an ore block by hand.\n"
-            + "harvestOres=true\n";
+            + "harvestOres=true\n"
+            + "\n"
+            + "# multiplayerAllowed: true or false. Server-only; a dedicated server reads\n"
+            + "# this to decide whether to announce harvester:support to compatible\n"
+            + "# clients at all. false (the default) means the server stays silent — it\n"
+            + "# never disconnects a client either way. Ignored by a client instance.\n"
+            + "multiplayerAllowed=false\n";
 
     private HarvesterConfigLoader() {
     }
@@ -109,8 +116,14 @@ public final class HarvesterConfigLoader {
                 parseBoolean(properties, KEY_HARVEST_LOGS, HarvesterConfig.DEFAULT_HARVEST_LOGS, warnings);
         boolean harvestOres =
                 parseBoolean(properties, KEY_HARVEST_ORES, HarvesterConfig.DEFAULT_HARVEST_ORES, warnings);
+        boolean multiplayerAllowed = parseBoolean(
+                properties, KEY_MULTIPLAYER_ALLOWED, HarvesterConfig.DEFAULT_MULTIPLAYER_ALLOWED, warnings
+        );
         return new LoadResult(
-                new HarvesterConfig(enabled, maxChain, neighborhood, diagnosticLogging, harvestLogs, harvestOres),
+                new HarvesterConfig(
+                        enabled, maxChain, neighborhood, diagnosticLogging, harvestLogs, harvestOres,
+                        multiplayerAllowed
+                ),
                 warnings
         );
     }

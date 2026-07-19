@@ -16,7 +16,11 @@
     "client": ["io.github.sfaguiar.harvester.client.HarvesterClientEntrypoint"],
     "server": ["io.github.sfaguiar.harvester.server.HarvesterServerEntrypoint"],
     "stationapi:event_bus_client": [
-      "io.github.sfaguiar.harvester.client.input.HarvesterKeyBindingListener"
+      "io.github.sfaguiar.harvester.client.input.HarvesterKeyBindingListener",
+      "io.github.sfaguiar.harvester.client.multiplayer.HarvesterSupportClientListener"
+    ],
+    "stationapi:event_bus_server": [
+      "io.github.sfaguiar.harvester.server.multiplayer.HarvesterServerSupportListener"
     ]
   },
   "mixins": ["harvester.mixins.json"],

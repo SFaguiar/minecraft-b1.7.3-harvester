@@ -25,7 +25,41 @@ final class HarvesterConfigLoaderTest {
         assertEquals(HarvesterConfig.DEFAULT_DIAGNOSTIC_LOGGING, result.config().diagnosticLogging());
         assertEquals(HarvesterConfig.DEFAULT_HARVEST_LOGS, result.config().harvestLogs());
         assertEquals(HarvesterConfig.DEFAULT_HARVEST_ORES, result.config().harvestOres());
+        assertEquals(HarvesterConfig.DEFAULT_MULTIPLAYER_ALLOWED, result.config().multiplayerAllowed());
         assertTrue(result.warnings().isEmpty());
+    }
+
+    @Test
+    void parse_multiplayerAllowedTrue_isHonored() {
+        Properties properties = new Properties();
+        properties.setProperty("multiplayerAllowed", "true");
+
+        HarvesterConfigLoader.LoadResult result = HarvesterConfigLoader.parse(properties);
+
+        assertTrue(result.config().multiplayerAllowed());
+        assertTrue(result.warnings().isEmpty());
+    }
+
+    @Test
+    void parse_multiplayerAllowedFalse_isHonored() {
+        Properties properties = new Properties();
+        properties.setProperty("multiplayerAllowed", "false");
+
+        HarvesterConfigLoader.LoadResult result = HarvesterConfigLoader.parse(properties);
+
+        assertFalse(result.config().multiplayerAllowed());
+        assertTrue(result.warnings().isEmpty());
+    }
+
+    @Test
+    void parse_invalidMultiplayerAllowed_fallsBackToDefaultWithOneWarning() {
+        Properties properties = new Properties();
+        properties.setProperty("multiplayerAllowed", "not-a-boolean");
+
+        HarvesterConfigLoader.LoadResult result = HarvesterConfigLoader.parse(properties);
+
+        assertEquals(HarvesterConfig.DEFAULT_MULTIPLAYER_ALLOWED, result.config().multiplayerAllowed());
+        assertEquals(1, result.warnings().size());
     }
 
     @Test
@@ -48,6 +82,7 @@ final class HarvesterConfigLoaderTest {
         assertTrue(written.contains("diagnosticLogging=false"));
         assertTrue(written.contains("harvestLogs=true"));
         assertTrue(written.contains("harvestOres=true"));
+        assertTrue(written.contains("multiplayerAllowed=false"));
     }
 
     @Test
@@ -294,6 +329,7 @@ final class HarvesterConfigLoaderTest {
 
         assertTrue(result.config().harvestLogs());
         assertTrue(result.config().harvestOres());
+        assertFalse(result.config().multiplayerAllowed());
         assertTrue(result.warnings().isEmpty());
         assertEquals(oldFormatContents, Files.readString(configFile, StandardCharsets.UTF_8));
     }
