@@ -836,6 +836,129 @@ consistent with the task's stated intent to ask the operator only for
 the indispensable connections. Server/client process boot, shutdown,
 and all log analysis were automated.
 
+### StationAPI-only client compatibility (`PROVEN_WITHIN_SCOPE` — bytecode-grounded AND runtime-confirmed this session)
+
+The V1 spike above (`REFUTED`/`PROVEN_WITHIN_SCOPE` results) tested a
+**fully vanilla** client (no Loader, no StationAPI at all) and found it
+rejected at login by an unrelated, pre-existing StationAPI limitation
+(`station-registry-sync-v0` unconditionally pushing packet ID 254 to
+every connecting peer). That result says nothing about the actual
+question this section resolves: does a client with **StationAPI but not
+Harvester** work correctly against a Harvester server? This was untested
+until this session and is the reason for the three-way client
+terminology below, replacing any earlier ambiguous "client without
+Harvester" phrasing.
+
+**`isModded()` semantics, confirmed by disassembling the pinned
+`station-vanilla-checker-v0` and `station-networking-v0` submodule jars
+(`javap` on the Loom-remapped classes inside the published
+`StationAPI-2.0.0-alpha.6.2.jar`'s `META-INF/jars/`, not decompiled/copied
+source):**
+- `NetworkHandlerMixin.isModded()` is exactly `this.mods != null` —
+  a simple non-null check on a `Map<String, String>` field.
+- That field is set by `ServerVanillaChecker.onPlayerLogin`
+  (`PlayerAttemptLoginEvent`, i.e. *before* `PlayerLoginEvent`/before any
+  player object exists), triggered purely by the masked bit in the
+  client's `LoginHelloPacket.worldSeed` matching `VanillaChecker.MASK`
+  (`sipHash24("stationapi")`) — a bit every StationAPI client sets
+  unconditionally, regardless of which mods (if any) it carries beyond
+  StationAPI itself. **`isModded()` becomes `true` before the server ever
+  asks the client which mods it has** — it proves "this peer is running
+  this exact StationAPI build," never "this peer has Harvester."
+- The subsequent `stationapi:modlist` exchange (`ServerVanillaChecker`'s
+  `registerMessages`) only ever inspects `VanillaChecker.CLIENT_REQUIRED_MODS`
+  — mods whose own `fabric.mod.json` sets a truthy
+  `stationapi:verify_client` custom value. Harvester's
+  `fabric.mod.json` (confirmed by reading it this session) sets no
+  `custom` block at all, so Harvester is never a member of
+  `CLIENT_REQUIRED_MODS` and the disconnect-on-missing-mod branch inside
+  that listener's lambda is structurally unreachable on account of
+  Harvester — confirming the "never add `stationapi:verify_client`" rule
+  already stated above is sufficient, not merely necessary, for this
+  guarantee.
+
+**Unknown-channel `MessagePacket` handling, confirmed by disassembling
+`station-networking-v0`'s `MessagePacket`/`MessageListenerRegistry`
+classes:**
+- `MessagePacket`'s read method (`method_806`) decodes the identifier
+  string and then each primitive array purely from a 9-bit presence mask
+  read off the wire — it never inspects or depends on the identifier's
+  value or on whether any listener is registered for it. Decoding a
+  `harvester:support` payload requires nothing Harvester-specific to be
+  present on the receiving peer.
+- `MessagePacket.apply` (`method_808`) is exactly:
+  `BiConsumer<?> listener = MessageListenerRegistry.INSTANCE.get(identifier); if (listener != null) listener.accept(player, this);`
+  — a `null` registry lookup (the case when no mod registered that
+  identifier, which is what happens when `HarvesterSupportClientListener`
+  never loads because Harvester isn't installed) is a silent no-op: no
+  exception, no log line, no disconnect. Registering a listener is
+  needed only to *consume* a `MessagePacket`, never to *decode* one.
+
+Together these two findings are the complete mechanism behind this
+section's runtime result below: a StationAPI-only client is confirmed
+`isModded()` (so the server sends `harvester:support`), decodes the
+packet fine (decoding is identifier-agnostic), finds no listener
+registered for `harvester:support` (Harvester's client listener class
+never loaded), and drops it — structurally, not by any Harvester-side
+defensive code.
+
+**Spike (runtime, this session).** Client: the existing, already-clean
+`b1.7.3 - StationAPI Baseline` MultiMC instance (component versions
+confirmed via `mmc-pack.json` — Minecraft `b1.7.3`, Babric `b1.7.3`,
+Fabric Loader `0.18.4`, matching this repo's pin exactly; `mods/` folder
+contains only `StationAPI-2.0.0-alpha.6.2.jar`, confirmed by a recursive
+search of the whole `.minecraft` tree for `*harvester*` returning zero
+matches — no jar, class, config, or `.fabric` cache entry from Harvester
+anywhere in this instance). Server: this repository's CURRENT working
+tree (`port/stationapi-v2`, `HEAD` at the start of this session),
+`./gradlew.bat runServer`, `run/server.properties` `online-mode=false`
+(already present from a prior session), `run/config/harvester.properties`
+carrying no `multiplayerAllowed` override so the server loaded its
+`false` default (confirmed in the server's own boot log:
+`HarvesterConfig{..., multiplayerAllowed=false}`).
+
+Server boot showed only `stationapi:event_bus_server`'s
+`HarvesterServerSupportListener` for `harvester` — no client-only
+Harvester class — consistent with the already-`PROVEN_WITHIN_SCOPE`
+same-JAR side-safety finding above. One manual Direct Connect
+(`127.0.0.1:25565`) was performed by the repository owner: login
+completed, the connection stayed open roughly 93 seconds (`09:39:57` to
+`09:41:30`, exceeding the 60-second checklist minimum), the owner
+confirmed movement, opening the inventory, and placing/breaking a
+vanilla block all worked normally, and disconnect was a clean,
+self-initiated `disconnect.endOfStream` — not a kick or crash. The
+server's own log for the whole session contains exactly one
+`[HARVEST-MP]` line for this connection,
+`Sent harvester:support to SFAguiar (multiplayerAllowed=false).`, no
+`Bad packet id` anywhere, no Mixin or classloading error, and the server
+process remained live and accepting after the disconnect (confirmed
+before it was deliberately stopped for this session's closeout). No
+crash report appeared under the client instance's `.minecraft` (the
+client's own `logs/latest.log`/`debug.log` stop mid-session — an
+unflushed-buffer artifact of how this instance's process was closed, not
+evidence of a fault; the repository owner separately confirmed nothing
+looked wrong on screen at any point, and the absence of a crash report
+plus the server-observed clean 93-second connection corroborate that).
+
+**Conclusion:** the StationAPI-only client case works exactly as the
+static analysis predicted. No Harvester-side code change was needed or
+made.
+
+### Final multiplayer compatibility matrix
+
+Using precise three-way client terminology (a client either has no
+StationAPI, has StationAPI without Harvester, or has both StationAPI and
+Harvester) rather than the ambiguous "client without Harvester" used
+earlier in this document's history:
+
+| Client | Server | Result |
+| --- | --- | --- |
+| Harvester (+ StationAPI) | vanilla (no StationAPI) | Compatible — confirmed vanilla-server compatibility above (Spike C); Harvester's multiplayer handshake never arms (server never confirmed `isModded()`), singleplayer-only behavior unaffected. |
+| No StationAPI (fully vanilla) | StationAPI + Harvester (CURRENT) | **Incompatible**, by a pre-existing StationAPI limitation (V1: `station-registry-sync-v0` unconditionally pushes packet ID 254 before any mod-list check runs) — `REFUTED` as a Harvester defect, out of this repository's scope to fix. |
+| StationAPI, no Harvester | StationAPI + Harvester (CURRENT) | **Compatible, vanilla-equivalent behavior** — this session's spike, above. Login, movement, inventory, and vanilla block placement/breaking all work; the server announces `harvester:support` (because `isModded()` only requires StationAPI), the client silently drops it (no listener registered), and no C2S Harvester packet exists to send. |
+| StationAPI + Harvester | StationAPI + Harvester (CURRENT) | Compatible; `harvester:support` discovery completes end-to-end to `SUPPORT_AVAILABLE_DISABLED` (V2 above). No gameplay (`harvester:active`) exists yet. |
+| any | StationAPI + Harvester (CURRENT) | The server requires StationAPI on the client's side to admit it at all (a separate, pre-existing StationAPI constraint, not something Harvester adds or could relax) but never requires the client to have Harvester itself. |
+
 ### Decisions requiring the repository owner
 
 All four questions this section originally raised were resolved by the
