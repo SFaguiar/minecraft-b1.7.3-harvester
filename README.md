@@ -1,5 +1,17 @@
 # Harvester
 
+> **Pre-release (`1.0.0-beta.1`).** This is not the final stable release.
+> Additional functionality and UX adjustments are still planned before a
+> final version (see `CHANGELOG.md` and `docs/PRE_RELEASE_HANDOFF.md`)  —
+> notably in-game configuration UI integration, drop consolidation onto
+> the originally-broken block, tool-gating for tree chains (axe-only),
+> per-category/per-block toggles, and new block categories (dirt/gravel,
+> leaves, mature crops). Behavior described below may change.
+>
+> **Back up any world you care about before trying this.** Testing and
+> feedback are welcome and expected — please report issues against the
+> repository.
+
 Harvester automatically continues breaking a connected group of tree logs
 or a single ore vein after you break one block by hand, using the same
 tool and durability rules as a normal break — no new drops, no bypassed

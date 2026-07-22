@@ -3,9 +3,17 @@
 All notable changes to Harvester are recorded here. Versions follow
 [SemVer](https://semver.org/).
 
-## 1.0.0
+## 1.0.0-beta.1
 
-First stable release.
+**Pre-release, not the final stable version.** Published for testing and
+feedback while additional functionality and UX adjustments are planned
+before a final release — see `docs/PRE_RELEASE_HANDOFF.md` for the full
+list of planned changes (in-game configuration UI integration, drop
+consolidation, axe-only tree chains, per-category/per-block toggles,
+dirt/gravel with shovel, leaves with shears, mature-only crops with hoe,
+and any other gaps found relevant before a stable release). Behavior
+described below may change before `1.0.0` ships. **Back up any world you
+care about before testing this build.**
 
 - Ore and log vein harvesting: hold the activation key (`V`) while
   breaking a log or a specifically-tagged ore block to chain-break the
