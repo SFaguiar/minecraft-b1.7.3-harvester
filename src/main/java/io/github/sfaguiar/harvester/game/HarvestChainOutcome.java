@@ -1,14 +1,17 @@
-package io.github.sfaguiar.harvester.client;
+package io.github.sfaguiar.harvester.game;
 
 /**
- * Outcome of a {@link SingleplayerHarvestExecutor} chain trigger. Exists
- * purely for internal clarity and unambiguous logging - it is not an
- * extensibility surface and must not grow into a hierarchy.
+ * Outcome of a chain-execution trigger — shared vocabulary between the
+ * singleplayer client executor and the multiplayer server executor (see
+ * {@code ARCHITECTURE.md}, "Reuse vs new adapter": "the same names ...
+ * describe identical situations server-side"). Exists purely for internal
+ * clarity and unambiguous logging - it is not an extensibility surface and
+ * must not grow into a hierarchy.
  */
-public enum SingleplayerHarvestExecutionResult {
+public enum HarvestChainOutcome {
     /** The automatic chain is disabled by configuration ({@code enabled=false}). */
     SKIPPED_DISABLED,
-    /** Activation key not held when the chain would have started. */
+    /** Not active when the chain would have started (client: activation key not held; server: player {@code active=false}). */
     SKIPPED_INACTIVE,
     /** Another Harvester-initiated break was already in flight. */
     SKIPPED_REENTRANT,
@@ -22,8 +25,8 @@ public enum SingleplayerHarvestExecutionResult {
     ORIGIN_TOOL_CHANGED_BEFORE_CHAIN_START,
     /** Every candidate in the plan was broken successfully. */
     CHAIN_COMPLETED,
-    /** Stopped: the activation key was released before a candidate was attempted. */
-    STOPPED_KEY_RELEASED,
+    /** Stopped: no longer active (client: activation key released; server: player {@code active} cleared) before a candidate was attempted. */
+    STOPPED_DEACTIVATED,
     /** Stopped: the world, player, or interaction manager became unavailable mid-chain. */
     STOPPED_ENVIRONMENT_INVALID,
     /** Stopped: a candidate failed immediate revalidation (no longer present or no longer a member of the resolved group). */
@@ -35,7 +38,7 @@ public enum SingleplayerHarvestExecutionResult {
      * for a log chain.
      */
     STOPPED_TOOL_UNSUITABLE,
-    /** Stopped: {@code breakBlock} returned {@code false} for a candidate. */
+    /** Stopped: the break attempt was rejected by the normal break pipeline for a candidate. */
     STOPPED_BREAK_REJECTED,
     /** Stopped: the held item's identity changed (broke or was replaced) immediately after a successful break. */
     STOPPED_TOOL_CHANGED

@@ -1,4 +1,4 @@
-package io.github.sfaguiar.harvester.client;
+package io.github.sfaguiar.harvester.game;
 
 import io.github.sfaguiar.harvester.core.BlockDescriptor;
 import net.modificationstation.stationapi.api.block.BlockState;
@@ -14,7 +14,10 @@ import java.util.stream.Collectors;
  * Converts a real StationAPI {@link BlockState} into a pure
  * {@link BlockDescriptor} — the only place in this codebase that decides
  * <em>how</em> a block is classified. {@code core} never sees a
- * {@link BlockState}, {@link TagKey}, or {@link Identifier}.
+ * {@link BlockState}, {@link TagKey}, or {@link Identifier}. Side-agnostic
+ * (takes a {@code BlockState}, never a {@code World} subtype), so both the
+ * singleplayer client and the multiplayer server call this exact method —
+ * see {@code ARCHITECTURE.md}, "Reuse vs new adapter".
  *
  * <p>Specific ore tags are detected generically — {@code namespace=c},
  * {@code path} starting with {@code "ores/"} with a non-empty suffix — by
@@ -28,7 +31,7 @@ import java.util.stream.Collectors;
  * {@code c:ores/redstone} already lists both
  * {@code minecraft:redstone_ore} and {@code minecraft:redstone_ore_lit}.
  */
-final class StationBlockDescriptors {
+public final class StationBlockDescriptors {
 
     private static final String SPECIFIC_ORE_NAMESPACE = "c";
     private static final String SPECIFIC_ORE_PATH_PREFIX = "ores/";
@@ -36,7 +39,7 @@ final class StationBlockDescriptors {
     private StationBlockDescriptors() {
     }
 
-    static BlockDescriptor describe(BlockState state) {
+    public static BlockDescriptor describe(BlockState state) {
         boolean log = state.isIn(BlockTags.LOGS);
         Set<String> specificOreTags = state.streamTags()
                 .map(TagKey::id)

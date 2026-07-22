@@ -4,6 +4,10 @@ import io.github.sfaguiar.harvester.client.input.HarvesterClientActivationState;
 import io.github.sfaguiar.harvester.core.BlockCoordinate;
 import io.github.sfaguiar.harvester.core.HarvestGroup;
 import io.github.sfaguiar.harvester.core.HarvestPlan;
+import io.github.sfaguiar.harvester.game.HarvestChainOutcome;
+import io.github.sfaguiar.harvester.game.HarvestToolCompatibility;
+import io.github.sfaguiar.harvester.game.HarvesterHeldItemSnapshot;
+import io.github.sfaguiar.harvester.game.StationBlockDescriptors;
 import io.github.sfaguiar.harvester.platform.HarvesterEntrypoint;
 import net.minecraft.client.InteractionManager;
 import net.minecraft.client.Minecraft;
@@ -65,7 +69,7 @@ public final class SingleplayerHarvestExecutor {
      * (not re-resolved) so candidate revalidation stays consistent with
      * what was actually discovered.
      */
-    public static SingleplayerHarvestExecutionResult executeChain(
+    public static HarvestChainOutcome executeChain(
             Minecraft minecraft,
             InteractionManager interactionManager,
             HarvestPlan plan,
@@ -76,15 +80,15 @@ public final class SingleplayerHarvestExecutor {
     ) {
         if (!HarvesterConfigState.current().enabled()) {
             HarvesterEntrypoint.LOGGER.debug("[HARVEST-EXEC] Skipped: automatic chain disabled by configuration.");
-            return SingleplayerHarvestExecutionResult.SKIPPED_DISABLED;
+            return HarvestChainOutcome.SKIPPED_DISABLED;
         }
         if (!HarvesterClientActivationState.isActive()) {
             HarvesterEntrypoint.LOGGER.debug("[HARVEST-EXEC] Skipped: activation key not held.");
-            return SingleplayerHarvestExecutionResult.SKIPPED_INACTIVE;
+            return HarvestChainOutcome.SKIPPED_INACTIVE;
         }
         if (!environmentValid(minecraft, interactionManager)) {
             HarvesterEntrypoint.LOGGER.debug("[HARVEST-EXEC] Skipped: world, player, or interaction manager unavailable.");
-            return SingleplayerHarvestExecutionResult.SKIPPED_INACTIVE;
+            return HarvestChainOutcome.SKIPPED_INACTIVE;
         }
 
         boolean diagnosticLogging = HarvesterConfigState.current().diagnosticLogging();
@@ -103,7 +107,7 @@ public final class SingleplayerHarvestExecutor {
                             + "(before={}, after={})",
                     originHeldItemBefore, originHeldItemAfter
             );
-            return SingleplayerHarvestExecutionResult.ORIGIN_TOOL_CHANGED_BEFORE_CHAIN_START;
+            return HarvestChainOutcome.ORIGIN_TOOL_CHANGED_BEFORE_CHAIN_START;
         }
 
         boolean requiresToolCheck = HarvestToolCompatibility.requiresToolCheck(group.kind());
@@ -118,7 +122,7 @@ public final class SingleplayerHarvestExecutor {
         int totalPlanned = candidates.size();
         if (totalPlanned == 0) {
             HarvesterEntrypoint.LOGGER.debug("[HARVEST-EXEC] Skipped: plan has no additional candidate.");
-            return SingleplayerHarvestExecutionResult.NO_ADDITIONAL_CANDIDATE;
+            return HarvestChainOutcome.NO_ADDITIONAL_CANDIDATE;
         }
 
         HarvesterEntrypoint.LOGGER.info(
@@ -127,15 +131,15 @@ public final class SingleplayerHarvestExecutor {
         );
 
         int successes = 0;
-        SingleplayerHarvestExecutionResult stopReason = SingleplayerHarvestExecutionResult.CHAIN_COMPLETED;
+        HarvestChainOutcome stopReason = HarvestChainOutcome.CHAIN_COMPLETED;
 
         for (int index = 0; index < totalPlanned; index++) {
             if (!HarvesterClientActivationState.isActive()) {
-                stopReason = SingleplayerHarvestExecutionResult.STOPPED_KEY_RELEASED;
+                stopReason = HarvestChainOutcome.STOPPED_DEACTIVATED;
                 break;
             }
             if (!environmentValid(minecraft, interactionManager)) {
-                stopReason = SingleplayerHarvestExecutionResult.STOPPED_ENVIRONMENT_INVALID;
+                stopReason = HarvestChainOutcome.STOPPED_ENVIRONMENT_INVALID;
                 break;
             }
 
@@ -146,20 +150,21 @@ public final class SingleplayerHarvestExecutor {
                         "[HARVEST-EXEC] Chain candidate {}/{} no longer valid: {}",
                         index + 1, totalPlanned, candidate
                 );
-                stopReason = SingleplayerHarvestExecutionResult.STOPPED_CANDIDATE_INVALID;
+                stopReason = HarvestChainOutcome.STOPPED_CANDIDATE_INVALID;
                 break;
             }
 
             if (requiresToolCheck) {
                 ItemStack currentHeldItem = heldItem(minecraft);
                 if (!HarvestToolCompatibility.canHarvest(
-                        minecraft, currentHeldItem, candidate.x(), candidate.y(), candidate.z(), candidateState
+                        minecraft.player, minecraft.world, currentHeldItem,
+                        candidate.x(), candidate.y(), candidate.z(), candidateState
                 )) {
                     HarvesterEntrypoint.LOGGER.debug(
                             "[HARVEST-EXEC] Chain candidate {}/{} tool no longer suitable: {}",
                             index + 1, totalPlanned, candidate
                     );
-                    stopReason = SingleplayerHarvestExecutionResult.STOPPED_TOOL_UNSUITABLE;
+                    stopReason = HarvestChainOutcome.STOPPED_TOOL_UNSUITABLE;
                     break;
                 }
             }
@@ -182,7 +187,7 @@ public final class SingleplayerHarvestExecutor {
                             "[HARVEST-EXEC] Chain candidate {}/{} rejected: {}", index + 1, totalPlanned, candidate
                     );
                 }
-                stopReason = SingleplayerHarvestExecutionResult.STOPPED_BREAK_REJECTED;
+                stopReason = HarvestChainOutcome.STOPPED_BREAK_REJECTED;
                 break;
             }
 
@@ -205,7 +210,7 @@ public final class SingleplayerHarvestExecutor {
                                 + "(before={}, after={})",
                         index + 1, totalPlanned, before, after
                 );
-                stopReason = SingleplayerHarvestExecutionResult.STOPPED_TOOL_CHANGED;
+                stopReason = HarvestChainOutcome.STOPPED_TOOL_CHANGED;
                 break;
             }
         }

@@ -1,4 +1,4 @@
-package io.github.sfaguiar.harvester.client;
+package io.github.sfaguiar.harvester.game;
 
 import io.github.sfaguiar.harvester.core.HarvestGroupKind;
 import org.junit.jupiter.api.Test;
@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * pure decision in this class. {@link HarvestToolCompatibility#canHarvest}
  * itself calls the real StationAPI {@code isSuitableFor} API and cannot run
  * without Minecraft started; it is covered by manual runtime validation
- * instead (R6/R7 in the harvester repository's runtime test procedure).
+ * instead (both the singleplayer and multiplayer runtime test procedures).
  */
 final class HarvestToolCompatibilityTest {
 

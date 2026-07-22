@@ -1,13 +1,13 @@
 package io.github.sfaguiar.harvester.mixin.client;
 
-import io.github.sfaguiar.harvester.client.HarvestDiscoveryOutcome;
 import io.github.sfaguiar.harvester.client.HarvesterConfigState;
-import io.github.sfaguiar.harvester.client.HarvesterHeldItemSnapshot;
 import io.github.sfaguiar.harvester.client.SingleplayerHarvestDiscoveryAdapter;
 import io.github.sfaguiar.harvester.client.SingleplayerHarvestExecutor;
 import io.github.sfaguiar.harvester.client.input.HarvesterClientActivationState;
 import io.github.sfaguiar.harvester.core.HarvestGroup;
 import io.github.sfaguiar.harvester.core.HarvestPlan;
+import io.github.sfaguiar.harvester.game.HarvestDiscoveryOutcome;
+import io.github.sfaguiar.harvester.game.HarvesterHeldItemSnapshot;
 import io.github.sfaguiar.harvester.platform.HarvesterEntrypoint;
 import net.minecraft.client.InteractionManager;
 import net.minecraft.client.Minecraft;

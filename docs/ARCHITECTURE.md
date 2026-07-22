@@ -1258,13 +1258,110 @@ manual interaction at all (server-shutdown hook verification).
   showed the expected `[HARVEST-MP] Player logout (network): Player`
   line.
 
-### Not implemented (unchanged from tranche 1's scope boundary)
+### Not implemented (tranche 2 scope boundary — superseded by tranche 3 below)
 
-BFS/discovery, log/ore classification, the additional-block chain,
-drops, and durability all remain singleplayer-only. This tranche adds no
-gameplay effect of any kind server-side — `active` and the observer log
-are purely diagnostic groundwork for a future gameplay tranche.
-`multiplayerRateLimitPerSecond` remains hard-coded at 4, not
-operator-configurable, per the tranche-1 owner decision this tranche did
-not revisit. Dimension change *is* handled deterministically (see
-"Deterministic lifecycle" above) — this is no longer an open gap.
+At the end of tranche 2, BFS/discovery, log/ore classification, the
+additional-block chain, drops, and durability were all still
+singleplayer-only; `active` and the observer log were purely diagnostic
+groundwork. Tranche 3 below closes that gap. `multiplayerRateLimitPerSecond`
+remains hard-coded at 4, not operator-configurable, per the tranche-1
+owner decision no later tranche has revisited. Dimension change *is*
+handled deterministically (see "Deterministic lifecycle" above).
+
+## Optional multiplayer, tranche 3 (implemented — server-authoritative chain execution)
+
+When every precondition holds — StationAPI-modded connection,
+`harvester:support` announced, `multiplayerAllowed=true`, the breaking
+player's `active=true`, the origin's own manual break already succeeded,
+and the origin resolves to a supported log/ore group with a suitable
+tool — the server now runs the exact same deterministic chain singleplayer
+already ran, entirely server-side. The client protocol is unchanged from
+tranche 2: still one boolean (`harvester:active`), never coordinates,
+blocks, tools, or plans.
+
+### Shared implementation, not a divergent copy
+
+A new side-agnostic package, `game`, holds every piece of classification/
+discovery logic that was previously `client`-only but has no client-only
+dependency: `StationBlockDescriptors`, `HarvestToolCompatibility` (now
+parameterized on `PlayerEntity`/`World` instead of `Minecraft`),
+`HarvesterHeldItemSnapshot`, `HarvestDiscoveryOutcome`, the shared
+`HarvestChainOutcome` stop-reason enum, and — new — `HarvestDiscoveryAdapter`,
+the single discovery implementation both
+`client.SingleplayerHarvestDiscoveryAdapter` (now a thin wrapper) and the
+server adapter call. `core`'s BFS (`ConnectedBlockFinder`) and
+classification (`HarvestGroupResolver`/`HarvestGroup`) were already shared
+and are unchanged. Only the break-invocation control loop itself is
+mirrored rather than shared — `server.multiplayer.ServerHarvestExecutor`
+structurally parallels `client.SingleplayerHarvestExecutor`, since the two
+sides differ in break-method signature (`tryBreakBlock(x,y,z)` vs.
+`breakBlock(x,y,z,direction)`), active-state source (per-player registry
+vs. a client-local flag), and environment model — genuinely
+platform-specific glue, not classification or BFS. `ServerHarvestExecutor`
+splits into a thin public wrapper (real `ServerPlayerEntity`/`ServerWorld`/
+`ServerBreakInvoker` types, called by the Mixin) over a package-private
+pure `runChain` loop (small functional seams, no Minecraft/StationAPI
+import) so the loop itself is unit-testable with fakes.
+
+### Vanilla pipeline integration
+
+Every additional break goes through
+`ServerPlayerInteractionManagerObserverMixin`'s own `@Invoker` onto
+`ServerPlayerInteractionManager.tryBreakBlock(int,int,int)Z` — the exact
+authoritative method the origin break itself went through. No manual drop,
+no manual durability change, no direct world mutation: drops, durability,
+range/permission checks, and any third-party protection Mixin on the same
+method apply to every chain candidate exactly as they would to a manual
+break.
+
+### Reentrancy
+
+The chain's own internal breaks re-enter this same Mixin on this same
+`ServerPlayerInteractionManager` instance (one instance per player, so the
+guard is naturally player-isolated with no thread-local and no
+cross-player interference). A new pure primitive,
+`game.ChainReentrancyGuard` (`tryEnter`/`exit`, unit-tested in isolation),
+is held as a `@Unique` field for the whole chain call and released in
+`finally`; while held, the Mixin's own `HEAD` capture is skipped, making
+every internal `tryBreakBlock` re-entry's `RETURN` handler inert — no
+re-discovery, no nested chain, regardless of exception.
+
+### Known limitations
+
+- `environmentValid` server-side is a coarse non-null check on the player/
+  world references (mirroring the singleplayer executor's own null-only
+  check) — it does not independently re-verify range or teleport distance;
+  this relies entirely on `tryBreakBlock` reusing the vanilla pipeline's
+  own range/permission checks per candidate, not a Harvester-added check.
+- `multiplayerRateLimitPerSecond` is still hard-coded (see above).
+- No GUI/hot-reload for any of `multiplayerAllowed`, `diagnosticLogging`,
+  or the per-server opt-in file — all remain manual file edits, unchanged
+  from tranches 1–2.
+
+### Evidence
+
+**Automated** (`./gradlew.bat clean test classes`, JDK 17): 221 tests, 0
+failures, 0 skipped — the pre-existing 194 plus 27 new/relocated
+(`game.ChainReentrancyGuardTest`, `server.multiplayer.ServerHarvestChainGateTest`,
+`server.multiplayer.ServerHarvestExecutorTest` exercising `runChain`'s pure
+loop — deterministic order, `maxChain`, candidate/tool revalidation,
+break-rejected, tool-changed-mid-chain, deactivation/environment-invalid
+mid-chain, independent invocations — and the relocated
+`game.HarvestToolCompatibilityTest`). No singleplayer test changed
+behavior; the pre-existing 194 remained green throughout.
+
+**Runtime** (dedicated `runServer`, `online-mode=false`,
+`multiplayerAllowed=true`, MultiMC `b1.7.3 - Harvester Dev Test` client,
+one guided session): server log (`diagnosticLogging=true` for this session
+only) shows, in order — a break with `active=false` (only the origin
+broke); a break with `active=true` producing
+`[HARVEST-MP-PLAN] ... group=LOGS ... totalIncluded=6 additionalCandidates=5`
+→ `[HARVEST-MP-EXEC] Chain starting: ... totalPlanned=5` →
+`[HARVEST-MP-EXEC] Chain finished: ... successes=5 stopReason=CHAIN_COMPLETED`
+(exactly one plan/chain pair despite five internal `tryBreakBlock`
+re-entries, confirming the reentrancy guard); then a further break with
+`active=false` (single block again, confirming clean deactivation). Zero
+exceptions/errors on either side; both sessions ended with a clean
+`disconnect.quitting`/`Player logout (network)` pair. `multiplayerAllowed`
+and `diagnosticLogging` were restored to `false` in the local dev `run/`
+config after the session (not version-controlled).

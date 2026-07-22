@@ -1,15 +1,17 @@
-package io.github.sfaguiar.harvester.client;
+package io.github.sfaguiar.harvester.game;
 
 import net.minecraft.item.ItemStack;
 
 /**
- * Immutable, primitive-only snapshot of the player's held item at one
- * instant. Exists specifically so the chain executor never retains a live
- * {@link ItemStack} reference across a {@code breakBlock} call — the
- * values are read out immediately at capture time.
+ * Immutable, primitive-only snapshot of a player's held item at one
+ * instant. Exists specifically so a chain executor never retains a live
+ * {@link ItemStack} reference across a break call — the values are read out
+ * immediately at capture time. Side-agnostic: {@link ItemStack} is a common
+ * type, so this is shared unchanged between the singleplayer client and the
+ * multiplayer server.
  *
  * <p>Used both for the {@code [HARVEST-DURABILITY]} diagnostic log and for
- * {@link #sameIdentityAs(HarvesterHeldItemSnapshot)}, which the chain
+ * {@link #sameIdentityAs(HarvesterHeldItemSnapshot)}, which a chain
  * executor uses to detect a broken or substituted tool between two
  * captures. Wear (damage/count changing while the item identity stays the
  * same) is expected and never counted as a change.
@@ -41,6 +43,20 @@ public final class HarvesterHeldItemSnapshot {
         return new HarvesterHeldItemSnapshot(
                 true, heldItem.itemId, heldItem.getDamage(), heldItem.getMaxDamage(), heldItem.count
         );
+    }
+
+    /**
+     * Test-only: a present snapshot with an arbitrary {@code itemId}, with
+     * no real {@link ItemStack} involved — mirrors the {@code
+     * sizeForTesting}/{@code clearForTesting} test-support pattern already
+     * used by {@code HarvesterMultiplayerServerRegistry}. {@link
+     * ItemStack} cannot be constructed in a plain JUnit run without a real
+     * item registry, so chain-executor tests exercising tool-identity
+     * change detection (in another package, hence {@code public} rather
+     * than package-private) use this instead of a real capture.
+     */
+    public static HarvesterHeldItemSnapshot presentForTesting(int itemId) {
+        return new HarvesterHeldItemSnapshot(true, itemId, 0, 0, 1);
     }
 
     public boolean present() {
