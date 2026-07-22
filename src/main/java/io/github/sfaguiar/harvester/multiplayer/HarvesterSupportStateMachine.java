@@ -75,21 +75,28 @@ public final class HarvesterSupportStateMachine {
     }
 
     /**
-     * A validated {@code harvester:support} payload arrived. Returns
-     * {@code false} without changing state for an incompatible protocol
-     * version or while {@code DISCONNECTED} (defensive — real wiring never
-     * calls this before a connection is operational); returns {@code true}
-     * and moves to {@code SUPPORT_AVAILABLE_DISABLED} otherwise, from
-     * {@code SUPPORT_UNKNOWN} (before timeout) or
-     * {@code SUPPORT_UNAVAILABLE} (a late announcement, explicitly accepted
-     * per owner decision) or idempotently from
-     * {@code SUPPORT_AVAILABLE_DISABLED} itself (a duplicate packet).
+     * A validated {@code harvester:support} payload arrived, together
+     * with the player's own local per-server opt-in preference (resolved
+     * once, at this exact moment — no hot reload). Returns {@code false}
+     * without changing state for an incompatible protocol version or
+     * while {@code DISCONNECTED} (defensive — real wiring never calls
+     * this before a connection is operational); returns {@code true}
+     * otherwise and moves to {@code SUPPORT_AVAILABLE_ENABLED} when the
+     * server allows multiplayer support and the player has opted in for
+     * this server, or {@code SUPPORT_AVAILABLE_DISABLED} otherwise (server
+     * disallows, player has not opted in, or both) — from {@code
+     * SUPPORT_UNKNOWN} (before timeout), {@code SUPPORT_UNAVAILABLE} (a
+     * late announcement, explicitly accepted per owner decision), or
+     * idempotently from either {@code SUPPORT_AVAILABLE_*} state itself
+     * (a duplicate packet).
      */
-    public boolean onAnnouncementReceived(HarvesterSupportPayload payload) {
+    public boolean onAnnouncementReceived(HarvesterSupportPayload payload, boolean localOptIn) {
         if (state == HarvesterSupportState.DISCONNECTED || !payload.isSupportedVersion()) {
             return false;
         }
-        state = HarvesterSupportState.SUPPORT_AVAILABLE_DISABLED;
+        state = payload.multiplayerAllowed() && localOptIn
+                ? HarvesterSupportState.SUPPORT_AVAILABLE_ENABLED
+                : HarvesterSupportState.SUPPORT_AVAILABLE_DISABLED;
         lastMultiplayerAllowed = payload.multiplayerAllowed();
         return true;
     }

@@ -23,8 +23,11 @@ import net.modificationstation.stationapi.api.util.Identifier;
  *
  * <p>This class never sends anything to a peer not already confirmed
  * modded, and never sends any packet other than {@code harvester:support}
- * — there is no {@code harvester:active} (or any other server-initiated
- * gameplay message) in this tranche.
+ * — {@code harvester:active} (client → server only, handled by {@link
+ * HarvesterServerActiveListener}) requires this announcement to have
+ * been sent first, which is why a successful send also marks {@link
+ * io.github.sfaguiar.harvester.multiplayer.HarvesterMultiplayerPlayerState#markSupportAnnounced()}
+ * on this player's registry entry.
  */
 @Environment(EnvType.SERVER)
 public class HarvesterServerSupportListener {
@@ -52,6 +55,7 @@ public class HarvesterServerSupportListener {
         packet.ints = payload.toInts();
         packet.booleans = payload.toBooleans();
         PacketHelper.sendTo(player, packet);
+        HarvesterMultiplayerServerRegistry.getOrCreate(player).markSupportAnnounced();
 
         HarvesterEntrypoint.LOGGER.info(
                 "[HARVEST-MP] Sent harvester:support to {} (multiplayerAllowed={}).", player.name, multiplayerAllowed

@@ -8,8 +8,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Covers every scenario the task's "Testes automatizados" list requires
- * for the client discovery state machine. Uses only synthetic millisecond
- * timestamps — never {@code Thread.sleep} — per
+ * for the client discovery state machine, including tranche 2's
+ * {@code localOptIn}-combined announcement outcome. Uses only synthetic
+ * millisecond timestamps — never {@code Thread.sleep} — per
  * {@link HarvesterSupportStateMachine}'s own "testable clock" contract.
  */
 final class HarvesterSupportStateMachineTest {
@@ -65,11 +66,44 @@ final class HarvesterSupportStateMachineTest {
     }
 
     @Test
-    void announcement_beforeTimeout_movesToAvailableDisabled() {
+    void announcement_beforeTimeout_serverDisallowed_movesToAvailableDisabled() {
         HarvesterSupportStateMachine machine = new HarvesterSupportStateMachine();
         machine.onConnectionOperational(T0);
 
-        boolean applied = machine.onAnnouncementReceived(new HarvesterSupportPayload(1, false));
+        boolean applied = machine.onAnnouncementReceived(new HarvesterSupportPayload(1, false), true);
+
+        assertTrue(applied);
+        assertEquals(HarvesterSupportState.SUPPORT_AVAILABLE_DISABLED, machine.state());
+    }
+
+    @Test
+    void announcement_serverAllowed_localOptInFalse_movesToAvailableDisabled() {
+        HarvesterSupportStateMachine machine = new HarvesterSupportStateMachine();
+        machine.onConnectionOperational(T0);
+
+        boolean applied = machine.onAnnouncementReceived(new HarvesterSupportPayload(1, true), false);
+
+        assertTrue(applied);
+        assertEquals(HarvesterSupportState.SUPPORT_AVAILABLE_DISABLED, machine.state());
+    }
+
+    @Test
+    void announcement_serverAllowed_localOptInTrue_movesToAvailableEnabled() {
+        HarvesterSupportStateMachine machine = new HarvesterSupportStateMachine();
+        machine.onConnectionOperational(T0);
+
+        boolean applied = machine.onAnnouncementReceived(new HarvesterSupportPayload(1, true), true);
+
+        assertTrue(applied);
+        assertEquals(HarvesterSupportState.SUPPORT_AVAILABLE_ENABLED, machine.state());
+    }
+
+    @Test
+    void announcement_serverDisallowed_localOptInTrue_movesToAvailableDisabled() {
+        HarvesterSupportStateMachine machine = new HarvesterSupportStateMachine();
+        machine.onConnectionOperational(T0);
+
+        boolean applied = machine.onAnnouncementReceived(new HarvesterSupportPayload(1, false), true);
 
         assertTrue(applied);
         assertEquals(HarvesterSupportState.SUPPORT_AVAILABLE_DISABLED, machine.state());
@@ -82,10 +116,10 @@ final class HarvesterSupportStateMachineTest {
         machine.onTick(T0 + HarvesterSupportStateMachine.DISCOVERY_TIMEOUT_MILLIS);
         assertEquals(HarvesterSupportState.SUPPORT_UNAVAILABLE, machine.state());
 
-        boolean applied = machine.onAnnouncementReceived(new HarvesterSupportPayload(1, true));
+        boolean applied = machine.onAnnouncementReceived(new HarvesterSupportPayload(1, true), true);
 
         assertTrue(applied);
-        assertEquals(HarvesterSupportState.SUPPORT_AVAILABLE_DISABLED, machine.state());
+        assertEquals(HarvesterSupportState.SUPPORT_AVAILABLE_ENABLED, machine.state());
         assertTrue(machine.lastMultiplayerAllowed());
     }
 
@@ -95,12 +129,12 @@ final class HarvesterSupportStateMachineTest {
         machine.onConnectionOperational(T0);
         HarvesterSupportPayload payload = new HarvesterSupportPayload(1, true);
 
-        boolean firstApplied = machine.onAnnouncementReceived(payload);
-        boolean secondApplied = machine.onAnnouncementReceived(payload);
+        boolean firstApplied = machine.onAnnouncementReceived(payload, true);
+        boolean secondApplied = machine.onAnnouncementReceived(payload, true);
 
         assertTrue(firstApplied);
         assertTrue(secondApplied);
-        assertEquals(HarvesterSupportState.SUPPORT_AVAILABLE_DISABLED, machine.state());
+        assertEquals(HarvesterSupportState.SUPPORT_AVAILABLE_ENABLED, machine.state());
     }
 
     @Test
@@ -109,7 +143,7 @@ final class HarvesterSupportStateMachineTest {
         machine.onConnectionOperational(T0);
 
         boolean applied = machine.onAnnouncementReceived(
-                new HarvesterSupportPayload(HarvesterSupportPayload.SUPPORTED_PROTOCOL_VERSION + 1, true)
+                new HarvesterSupportPayload(HarvesterSupportPayload.SUPPORTED_PROTOCOL_VERSION + 1, true), true
         );
 
         assertFalse(applied);
@@ -120,7 +154,7 @@ final class HarvesterSupportStateMachineTest {
     void announcement_whileDisconnected_isRejected() {
         HarvesterSupportStateMachine machine = new HarvesterSupportStateMachine();
 
-        boolean applied = machine.onAnnouncementReceived(new HarvesterSupportPayload(1, true));
+        boolean applied = machine.onAnnouncementReceived(new HarvesterSupportPayload(1, true), true);
 
         assertFalse(applied);
         assertEquals(HarvesterSupportState.DISCONNECTED, machine.state());
@@ -130,7 +164,7 @@ final class HarvesterSupportStateMachineTest {
     void disconnect_clearsStateBackToDisconnected() {
         HarvesterSupportStateMachine machine = new HarvesterSupportStateMachine();
         machine.onConnectionOperational(T0);
-        machine.onAnnouncementReceived(new HarvesterSupportPayload(1, true));
+        machine.onAnnouncementReceived(new HarvesterSupportPayload(1, true), true);
 
         machine.onDisconnected();
 
@@ -141,8 +175,8 @@ final class HarvesterSupportStateMachineTest {
     void newConnection_doesNotInheritPreviousSupport() {
         HarvesterSupportStateMachine machine = new HarvesterSupportStateMachine();
         machine.onConnectionOperational(T0);
-        machine.onAnnouncementReceived(new HarvesterSupportPayload(1, true));
-        assertEquals(HarvesterSupportState.SUPPORT_AVAILABLE_DISABLED, machine.state());
+        machine.onAnnouncementReceived(new HarvesterSupportPayload(1, true), true);
+        assertEquals(HarvesterSupportState.SUPPORT_AVAILABLE_ENABLED, machine.state());
 
         // Reconnect to a different (or the same) server without an intervening onDisconnected().
         machine.onConnectionOperational(T0 + 60_000);
@@ -155,7 +189,7 @@ final class HarvesterSupportStateMachineTest {
     void newConnection_afterExplicitDisconnect_startsAtUnknownNotAvailable() {
         HarvesterSupportStateMachine machine = new HarvesterSupportStateMachine();
         machine.onConnectionOperational(T0);
-        machine.onAnnouncementReceived(new HarvesterSupportPayload(1, true));
+        machine.onAnnouncementReceived(new HarvesterSupportPayload(1, true), true);
         machine.onDisconnected();
 
         machine.onConnectionOperational(T0 + 120_000);
@@ -167,7 +201,7 @@ final class HarvesterSupportStateMachineTest {
     void tick_whileAlreadyAvailable_doesNotRegressToUnavailable() {
         HarvesterSupportStateMachine machine = new HarvesterSupportStateMachine();
         machine.onConnectionOperational(T0);
-        machine.onAnnouncementReceived(new HarvesterSupportPayload(1, false));
+        machine.onAnnouncementReceived(new HarvesterSupportPayload(1, false), true);
 
         machine.onTick(T0 + HarvesterSupportStateMachine.DISCOVERY_TIMEOUT_MILLIS + 10_000);
 

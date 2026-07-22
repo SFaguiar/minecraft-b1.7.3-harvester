@@ -5,10 +5,15 @@
   "compatibilityLevel": "JAVA_17",
   "mixins": [],
   "client": [
-    "client.SingleplayerInteractionManagerObserverMixin"
+    "client.SingleplayerInteractionManagerObserverMixin",
+    "client.ClientNetworkHandlerConnectMixin"
   ],
   "server": [
-    "server.ServerPlayerEntityDisconnectMixin"
+    "server.ServerPlayerEntityDisconnectMixin",
+    "server.ServerPlayNetworkHandlerDisconnectMixin",
+    "server.PlayerManagerLifecycleMixin",
+    "server.MinecraftServerShutdownMixin",
+    "server.ServerPlayerInteractionManagerObserverMixin"
   ],
   "injectors": { "defaultRequire": 1 }
 }

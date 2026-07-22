@@ -37,6 +37,7 @@ public final class HarvesterSupportClientState {
 
     public static void onConnectionOperational(long nowMillis) {
         STATE_MACHINE.onConnectionOperational(nowMillis);
+        HarvesterMultiplayerActivationState.resetForDisconnect();
         warnedInvalidPayloadThisConnection = false;
         warnedIncompatibleVersionThisConnection = false;
         HarvesterEntrypoint.LOGGER.info(
@@ -50,6 +51,7 @@ public final class HarvesterSupportClientState {
             return;
         }
         STATE_MACHINE.onDisconnected();
+        HarvesterMultiplayerActivationState.resetForDisconnect();
         warnedInvalidPayloadThisConnection = false;
         warnedIncompatibleVersionThisConnection = false;
         HarvesterEntrypoint.LOGGER.debug("[HARVEST-MP] Disconnected; support state reset.");
@@ -66,15 +68,16 @@ public final class HarvesterSupportClientState {
         }
     }
 
-    /** Returns whether the announcement was applied (compatible version). */
+    /** Returns whether the announcement was applied (compatible version); resolves the local per-server opt-in preference once, at this exact moment. */
     public static boolean onAnnouncementReceived(HarvesterSupportPayload payload) {
         HarvesterSupportState before = STATE_MACHINE.state();
-        boolean applied = STATE_MACHINE.onAnnouncementReceived(payload);
+        boolean localOptIn = HarvesterServerOptInState.resolveOptIn();
+        boolean applied = STATE_MACHINE.onAnnouncementReceived(payload, localOptIn);
         if (applied) {
-            if (before != HarvesterSupportState.SUPPORT_AVAILABLE_DISABLED) {
+            if (before != STATE_MACHINE.state()) {
                 HarvesterEntrypoint.LOGGER.info(
-                        "[HARVEST-MP] Server support confirmed (multiplayerAllowed={}).",
-                        payload.multiplayerAllowed()
+                        "[HARVEST-MP] Server support confirmed (multiplayerAllowed={}, localOptIn={}, state={}).",
+                        payload.multiplayerAllowed(), localOptIn, STATE_MACHINE.state()
                 );
             }
         } else if (!warnedIncompatibleVersionThisConnection) {
@@ -97,6 +100,8 @@ public final class HarvesterSupportClientState {
     /** Test-only reset, bypassing any StationAPI event wiring. */
     static void resetForTesting() {
         STATE_MACHINE.onDisconnected();
+        HarvesterMultiplayerActivationState.resetForDisconnect();
+        HarvesterConnectionAddressState.resetForTesting();
         warnedInvalidPayloadThisConnection = false;
         warnedIncompatibleVersionThisConnection = false;
     }

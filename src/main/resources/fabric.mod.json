@@ -20,7 +20,8 @@
       "io.github.sfaguiar.harvester.client.multiplayer.HarvesterSupportClientListener"
     ],
     "stationapi:event_bus_server": [
-      "io.github.sfaguiar.harvester.server.multiplayer.HarvesterServerSupportListener"
+      "io.github.sfaguiar.harvester.server.multiplayer.HarvesterServerSupportListener",
+      "io.github.sfaguiar.harvester.server.multiplayer.HarvesterServerActiveListener"
     ]
   },
   "mixins": ["harvester.mixins.json"],

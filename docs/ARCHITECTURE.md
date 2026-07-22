@@ -968,3 +968,303 @@ tranche's scope" near the top of this section for the resolutions
 persistence at all yet; rate limit fixed at 4/s, no config surface;
 ADR 0002 stays as-is, a new ADR follows only after the server break-hook
 runtime spike). Nothing remains open from this original list.
+
+## Optional multiplayer, tranche 2 (implemented — opt-in, `harvester:active`, rate limit, observer hook)
+
+Builds directly on tranche 1's handshake (`harvester:support`,
+`SUPPORT_UNKNOWN`/`SUPPORT_UNAVAILABLE`/`SUPPORT_AVAILABLE_DISABLED`)
+without modifying its wire format. Still no BFS, classification,
+additional-block chain, drops, or durability for multiplayer — this
+tranche is the activation signal and an observation-only server hook,
+nothing gameplay-shaped.
+
+### `harvester:active` (client → server)
+
+`MessagePacket` on `Identifier` `harvester:active`, `booleans[0]` = the
+new `active` value, no other field. `HarvesterActivePayload.parse`
+rejects anything else outright (missing/extra booleans, or any other
+array/string field present) — modeled after `harvester:support`'s
+payload but stricter, since this is the one channel a modified client
+could try to abuse. The server (`HarvesterServerActiveListener`, under
+`stationapi:event_bus_server`) accepts a message only when: the
+connection is already confirmed `isModded()`; the payload parses
+strictly; `harvester:support` was already sent to this player
+(`HarvesterMultiplayerPlayerState#supportAnnounced`); and the server's
+*current* `multiplayerAllowed` is `true` (re-checked live, never assumed
+from the earlier announcement). Any rejection is silent — logged at
+`DEBUG`/rate-limited `WARN`, never a disconnect — and never sets `active`
+to anything but its current value or `false`.
+
+### Client per-server opt-in
+
+A new, client-only, per-server file:
+`config/harvester/servers/<readableHost>-<shortHash>.properties`, e.g.
+`127.0.0.1-723ec373.properties`, containing `address=host:port` and
+`multiplayerOptIn=false|true`. Identity (`HarvesterServerIdentity`) is
+the lowercased host plus the *explicit* port the player connected with —
+never a resolved IP, MOTD, or other server-supplied value — captured at
+the one point both are available before DNS resolution:
+`ClientNetworkHandlerConnectMixin` on `ClientNetworkHandler`'s own
+constructor (confirmed by disassembly that the constructor passes its
+`String host` parameter straight into `InetAddress.getByName` without
+ever storing it as a field — no public API/event exposes this value
+otherwise). Missing file → created with `false`; invalid value → `false`
+plus a warning; no GUI, no hot reload — loaded once, fresh from disk,
+only when a `harvester:support` announcement actually arrives
+(`HarvesterServerOptInState.resolveOptIn`). Different ports on the same
+host, or different hosts, get isolated files (hash covers the full
+`host:port` string). Never written to under any circumstance during
+singleplayer — see "Singleplayer non-interference" below.
+
+### `SUPPORT_AVAILABLE_ENABLED` / `SUPPORT_AVAILABLE_DISABLED`
+
+`HarvesterSupportStateMachine.onAnnouncementReceived(payload, localOptIn)`
+now takes the resolved opt-in preference alongside the payload and picks
+between the two states: `ENABLED` only when `multiplayerAllowed &&
+localOptIn`; `DISABLED` otherwise (server disallows, opt-in is `false`,
+or both). The activation key's held/released state
+(`HarvesterActiveTransitionTracker`, wrapped by
+`HarvesterMultiplayerActivationState`) is tracked independently of this
+state — holding the key while support is unavailable, then support later
+becoming available, does not itself send anything; only a genuine
+press/release edge does, and only while currently `ENABLED`. Press sends
+exactly one `true`; holding never repeats; release sends exactly one
+`false`. Disconnect (and a fresh `onConnectionOperational`, covering
+reconnect-without-an-intervening-disconnect) clears both the support
+state and the key-tracker — a new connection never inherits either.
+
+### Server-side per-player state and rate limit
+
+`HarvesterMultiplayerServerRegistry` (`server.multiplayer`, keyed by
+`ServerPlayerEntity` instance identity, never a name or UUID — this
+Minecraft version has neither) holds one pure
+`HarvesterMultiplayerPlayerState` per player: `supportAnnounced`,
+`active`, and a `HarvesterRateLimiter` (sliding window, a 4-slot ring
+buffer of acceptance timestamps — matches the size this document already
+specified in tranche 1's design). `applyTransition(newValue, nowMillis)`:
+a repeat of the already-stored value is idempotent and never consumes a
+slot; a genuine change either applies (within 4 per rolling second) or is
+rejected and **forces `active=false`** (never leaves the previous value
+in place) — at most one rate-limit warning per window
+(`shouldWarnRateLimit`). All of this is pure and unit-tested with a fake
+clock.
+
+The registry itself is a thin, `ServerPlayerEntity`-typed specialization
+of `HarvesterIdentityRegistry<K, V>` — a pure, generic identity-keyed
+registry (`IdentityHashMap`, only explicit `remove`/`clearAll`, no GC
+dependence anywhere) unit-tested directly with plain `Object` keys
+standing in for player instances, since a real `ServerPlayerEntity`
+cannot be constructed outside a running server. Every lifecycle event
+that must clear or reset state has its own deterministic Mixin hook — see
+"Deterministic lifecycle" below; a first version of this registry used a
+`WeakHashMap` and left dimension change unhandled, letting GC-eventual
+cleanup stand in for correctness. That was rejected on review as
+insufficient (garbage collection is not a functional or security
+guarantee) and replaced with the explicit-hook design described here.
+
+### Deterministic lifecycle (four hooks, all explicit, no GC dependence)
+
+Every event that must clear or reset per-player state has its own narrow,
+disassembly-confirmed Mixin hook — none alter vanilla control flow, each
+only calls into `server.multiplayer` after (or, for respawn, using a
+parameter already available at) the injection point:
+
+- **Client-initiated disconnect** (`disconnect.endOfStream`,
+  `disconnect.genericReason` — the common case): `ServerPlayNetworkHandlerDisconnectMixin`
+  on `ServerPlayNetworkHandler.onDisconnected(String, Object[])`, calling
+  `remove(player)`. Tranche 1 had instead added
+  `ServerPlayerEntityDisconnectMixin` on `ServerPlayerEntity.onDisconnect()`,
+  assumed to be the per-player logout hook — **this tranche's T6 runtime
+  testing found that assumption wrong**: disassembly plus live
+  dedicated-server logs show `onDisconnect()` is only ever called from
+  `ServerPlayNetworkHandler.disconnect(String)`, the
+  server-initiated-kick path; a normal client disconnect never reaches
+  it (confirmed: zero `[HARVEST-MP] Player logout` lines appeared across
+  six client-initiated disconnects in the original T6 session, on either
+  the console or `logs/debug.log`). Both Mixins are kept — `remove` is
+  idempotent, so covering the kick path in addition to the common path
+  is harmless — but `ServerPlayNetworkHandlerDisconnectMixin` is the one
+  that actually fires for a normal logout.
+- **Server-initiated kick**: `ServerPlayerEntityDisconnectMixin` on
+  `ServerPlayerEntity.onDisconnect()`, calling `remove(player)` (kept
+  from tranche 1, now correctly scoped to this path only).
+- **Respawn (death) — a genuinely new instance**: `PlayerManager
+  .respawnPlayer(ServerPlayerEntity, int)` constructs a new
+  `ServerPlayerEntity` (confirmed by disassembly: `new
+  ServerPlayerEntity(...)` inside the method body, copying only `id`/
+  `networkHandler` from the old instance; confirmed its sole caller is
+  `ServerPlayNetworkHandler.onPlayerRespawn(PlayerRespawnPacket)`, the
+  client's post-death respawn request). `PlayerManagerLifecycleMixin
+  #harvester$onRespawn`, injected at `HEAD`, removes the *old* instance's
+  entry immediately — it is still available as the method's own first
+  parameter at that point, before the new instance is even constructed.
+  The new instance is simply never a key in the map, so it starts with
+  every field at its default (`supportAnnounced=false`, `active=false`,
+  an empty rate limiter, no warning state) with no extra reset code
+  needed.
+- **Dimension/world change — the *same* instance**: `PlayerManager
+  .changePlayerDimension(ServerPlayerEntity)` reuses the same instance
+  (confirmed by disassembly: only `ServerPlayerEntity.setWorld` is
+  called, no new instance constructed). Since there is no new map key to
+  rely on, `PlayerManagerLifecycleMixin#harvester$onDimensionChange`
+  explicitly resets the entry's **operational state** in place
+  (`HarvesterMultiplayerPlayerState#resetOnWorldChange`) while
+  preserving its **connection state** — a deliberate split, not a
+  half-measure:
+  - preserved: `supportAnnounced` — the StationAPI connection itself
+    does not change on a dimension change, and the server already
+    announced `harvester:support` to it exactly once; nothing re-sends
+    that announcement on a world change, so clearing this here would
+    permanently lock the player out of `harvester:active` for the rest
+    of that connection the first time they cross a dimension boundary —
+    a real regression, not a stricter guarantee, with no re-announce
+    protocol to recover;
+  - reset in full: `active` (must never survive a world boundary without
+    the key being pressed again there), the rate limiter's entire window
+    (`HarvesterRateLimiter#reset()` — a fresh run of up to 4 real
+    transitions is accepted in the new world regardless of the old
+    window's state), and the warning-suppression timestamp (a stale
+    "just warned" state from the old world must not suppress a genuine
+    first warning in the new one).
+
+  This mirrors tranche 1's own original design record ("Reset to false
+  (not removed) on respawn and on dimension change") for the
+  dimension-change case specifically, refined during a correction round
+  to cover the rate limiter and warning state explicitly rather than only
+  `active` — an earlier version of this fix reset `active` alone,
+  leaving the old world's rate-limit window and warning-suppression
+  state to leak into the new one.
+- **Server shutdown**: `MinecraftServerShutdownMixin` on the private
+  `MinecraftServer.shutdown()` — confirmed by disassembly to be called
+  from three separate points inside `run()` (normal loop exit plus at
+  least one exceptional path), making it the single point reliably
+  reached on every way the server loop can end, unlike the public
+  `stop()` (which only flips a `running` flag the loop checks). Calls
+  `clearAll()` at `HEAD`. **Runtime-confirmed this session**: a server
+  was booted, sent a piped `stop` console command, and its log showed
+  `[HARVEST-MP] Server shutting down; multiplayer registry cleared.`
+  immediately — fully automated, no manual interaction needed.
+
+None of these four hooks needed a "strong justification" to deviate from
+`IdentityHashMap`; the map itself is exactly that structure, per the
+requirement, wrapped only for testability (see above).
+
+### Observer-only server hook
+
+`ServerPlayerInteractionManagerObserverMixin` on
+`ServerPlayerInteractionManager.tryBreakBlock(int,int,int)Z` (`@Shadow`
+on its own `player`/`world` fields, no superclass reuse — unlike the
+singleplayer Mixin, nothing useful is inherited here). Captures at
+`HEAD`: pre-break block id/meta/`BlockState`, held item id. At `RETURN`:
+the player's current `active` flag (read from the registry, defaulting
+`false` if the player has no entry yet) and the break's success/post
+block id. Never cancels, never mutates, never runs BFS, never breaks an
+additional block. With `diagnosticLogging=false`, no log call and no
+post-state read happen at all (only the cheap `HEAD`-time reads, matching
+the existing client-side observer's own gating precedent); with `true`,
+one `[HARVEST-MP-OBSERVE]` line per break. Confirmed inert for a
+player's own singleplayer break (unchanged from tranche 1's finding:
+singleplayer never calls `ServerPlayerInteractionManager` for the local
+player).
+
+### Singleplayer non-interference (`PROVEN_WITHIN_SCOPE`, source-grounded)
+
+None of this tranche's new client-side machinery (connection-address
+capture, opt-in file lookup/creation, `harvester:active` sending)
+depends on any singleplayer-specific check — instead it is structurally
+unreachable in singleplayer, confirmed by reading
+`StationAPI#setupMods`: `stationapi:event_bus_server` entrypoints
+(`HarvesterServerSupportListener`, `HarvesterServerActiveListener`) are
+set up once per process, keyed by `FabricLoader.getEnvironmentType()` —
+always `CLIENT` for a client process, even one that later starts an
+embedded singleplayer server. `harvester:support` is therefore never
+sent to a singleplayer client, the discovery timer always expires to
+`SUPPORT_UNAVAILABLE`, and `HarvesterServerOptInState.resolveOptIn`
+(the only code that touches the opt-in file) is only ever invoked from
+inside the announcement handler — never reached, never a file created or
+read for singleplayer. This mirrors and extends tranche 1's own
+same-JAR/opposite-side finding rather than adding a new guard.
+
+### T1–T6 runtime results (this session, `port/stationapi-v2`)
+
+All six performed against a real dedicated server (`online-mode=false`)
+and the Loom dev client, cross-checked between client and server logs
+(`logs/debug.log`, which carries `DEBUG`-level lines the console/`INFO`
+log does not). Manual actions: two guided play sessions in the original
+session (connect/observe only, then press/hold/release/break/
+disconnect-while-held/reconnect), plus one additional focused session in
+a follow-up correction round (isolated T4 revalidation, after
+reconciling that the original T4 result had been mis-scoped — see that
+bullet below) and one graceful `stop` sent via piped stdin with no
+manual interaction at all (server-shutdown hook verification).
+
+- **T1 (client → genuine vanilla server) — PASS.** `Connection
+  operational` → exactly 5000 ms later `Support discovery timed out;
+  server treated as unavailable`; no `harvester:active` ever sent (key
+  press while unavailable is a structural no-op); vanilla server logged
+  a normal login/clean disconnect, no protocol error.
+- **T2 (`multiplayerAllowed=false`, opt-in `true`) — PASS.** Client
+  reached `multiplayerAllowed=false, localOptIn=true,
+  state=SUPPORT_AVAILABLE_DISABLED`; no C2S sent; server `active` never
+  set.
+- **T3 (`multiplayerAllowed=true`, opt-in `false`) — PASS.** Client
+  reached `multiplayerAllowed=true, localOptIn=false,
+  state=SUPPORT_AVAILABLE_DISABLED`; blocks broken during this state
+  observed server-side with `active=false`.
+- **T4 (both `true`) — INITIALLY MIS-REPORTED, then corrected and
+  re-passed.** The original session's report claimed both "T4 passed
+  cleanly" and "the rate limiter fired live" without noticing both
+  observations came from the *same* single connection: reconciling the
+  exact logs afterward showed that one connection (login 13:51:15,
+  disconnect 13:58:01) carried 10 `harvester:active` sends in two rapid
+  bursts of 4-accepted-then-1-rejected each (8 applied, 2
+  `RATE_LIMITED`, 0 duplicates — every send alternated value) — the
+  product of the operator's confused early "pressed V multiple times at
+  the main menu" attempt, not a controlled single press/hold/release.
+  Evaluating T4's literal criteria ("exactly two transitions accepted,
+  no rate-limit trigger") against that whole connection, it does **not**
+  pass — a corrected, isolated revalidation was required. **Focused
+  revalidation (new connection, this follow-up session):** login
+  16:32:20; disconnect 16:34:30. The single-cycle script (press once,
+  hold, release once, nothing more) was **not** followed literally — the
+  operator performed **two independent press-hold(~2s)-release cycles**
+  in the same connection. Each cycle, taken on its own, produced exactly:
+  1 `true` accepted, 1 `false` accepted, 0 duplicates, 0 rejected, 0
+  rate-limit warnings — the edge/hold semantics T4 requires (press sends
+  once, holding never repeats, release sends once) are confirmed **per
+  cycle**, twice over, with no ambiguity in either cycle. This is not
+  reported as an aggregate "accepted true = 2, accepted false = 2" figure
+  standing in for a single clean run — it is two separate, individually
+  clean 1-true/1-false results. Server-side disconnect cleanup fired
+  correctly on this connection too (`[HARVEST-MP] Player logout
+  (network): Player`). The rate-limiter-under-load behavior from the
+  original messy connection is retained as separate, valid evidence that
+  the limiter itself works under real network timing (not a T4 result)
+  — the limiter's primary evidence remains its synthetic-clock unit
+  tests (`HarvesterRateLimiterTest`, `HarvesterMultiplayerPlayerStateTest`).
+- **T5 (observer hook) — PASS.** A block broken with the key not held
+  logged `active=false`; a block broken while held logged `active=true`
+  (a `LogBlock` break sandwiched between its `true` and `false` sends);
+  no BFS or additional break observed either time.
+- **T6 (lifecycle) — PASS, after a fix.** Holding the key, setting
+  `active=true`, then disconnecting without releasing, followed by a
+  reconnect: the reconnect logged in with a *new* entity id each time
+  (fresh `ServerPlayerEntity` instance, confirmed via the vanilla
+  per-connection entity-id log) and re-ran the full discovery/announce
+  cycle from `SUPPORT_UNKNOWN`, never skipping to a cached state — no
+  stale `active=true` carried over. Getting here surfaced the
+  `onDisconnect()` bug described above; after adding
+  `ServerPlayNetworkHandlerDisconnectMixin`, a follow-up disconnect
+  showed the expected `[HARVEST-MP] Player logout (network): Player`
+  line.
+
+### Not implemented (unchanged from tranche 1's scope boundary)
+
+BFS/discovery, log/ore classification, the additional-block chain,
+drops, and durability all remain singleplayer-only. This tranche adds no
+gameplay effect of any kind server-side — `active` and the observer log
+are purely diagnostic groundwork for a future gameplay tranche.
+`multiplayerRateLimitPerSecond` remains hard-coded at 4, not
+operator-configurable, per the tranche-1 owner decision this tranche did
+not revisit. Dimension change *is* handled deterministically (see
+"Deterministic lifecycle" above) — this is no longer an open gap.

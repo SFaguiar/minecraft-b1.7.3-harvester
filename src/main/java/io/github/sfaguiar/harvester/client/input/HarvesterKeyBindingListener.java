@@ -1,5 +1,6 @@
 package io.github.sfaguiar.harvester.client.input;
 
+import io.github.sfaguiar.harvester.client.multiplayer.HarvesterMultiplayerActivationState;
 import io.github.sfaguiar.harvester.platform.HarvesterEntrypoint;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -72,5 +73,7 @@ public class HarvesterKeyBindingListener {
                     "[HARVEST-EXEC] Activation state changed: held={}", pressed
             );
         }
+
+        HarvesterMultiplayerActivationState.onKeyStateChanged(pressed);
     }
 }
