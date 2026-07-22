@@ -18,7 +18,7 @@ saves/
 screenshots/
 
 # Proprietary game data and legacy toolchains
-assets/
+/assets/
 instances/
 libraries/
 natives/
@@ -45,3 +45,7 @@ minecraft.jar
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Local memory folders and files
+.local/
+*.local.md

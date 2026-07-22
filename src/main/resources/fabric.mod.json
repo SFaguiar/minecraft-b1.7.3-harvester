@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "harvester",
+  "version": "${version}",
+  "name": "Harvester",
+  "description": "Clean-room StationAPI port foundation for Harvester.",
+  "authors": ["Better Beta contributors"],
+  "contact": {
+    "sources": "https://github.com/SFaguiar/minecraft-b1.7.3-harvester",
+    "issues": "https://github.com/SFaguiar/minecraft-b1.7.3-harvester/issues"
+  },
+  "license": "LicenseRef-Harvester-Audit-Pending",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["io.github.sfaguiar.harvester.platform.HarvesterEntrypoint"],
+    "client": ["io.github.sfaguiar.harvester.client.HarvesterClientEntrypoint"],
+    "server": ["io.github.sfaguiar.harvester.server.HarvesterServerEntrypoint"],
+    "stationapi:event_bus_client": [
+      "io.github.sfaguiar.harvester.client.input.HarvesterKeyBindingListener",
+      "io.github.sfaguiar.harvester.client.multiplayer.HarvesterSupportClientListener"
+    ],
+    "stationapi:event_bus_server": [
+      "io.github.sfaguiar.harvester.server.multiplayer.HarvesterServerSupportListener",
+      "io.github.sfaguiar.harvester.server.multiplayer.HarvesterServerActiveListener"
+    ]
+  },
+  "mixins": ["harvester.mixins.json"],
+  "depends": {
+    "fabricloader": "0.18.4",
+    "stationapi": "2.0.0-alpha.6.2",
+    "minecraft": "1.0.0-beta.7.3",
+    "java": "17"
+  }
+}
