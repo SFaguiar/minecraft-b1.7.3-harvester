@@ -1,12 +1,13 @@
 # Harvester
 
 > **Pre-release (`1.0.0-beta.1`).** This is not the final stable release.
-> Additional functionality and UX adjustments are still planned before a
-> final version (see `CHANGELOG.md` and `docs/PRE_RELEASE_HANDOFF.md`)  —
-> notably in-game configuration UI integration, drop consolidation onto
-> the originally-broken block, tool-gating for tree chains (axe-only),
-> per-category/per-block toggles, and new block categories (dirt/gravel,
-> leaves, mature crops). Behavior described below may change.
+> The planned UX/scope work — an in-game configuration screen, drop
+> consolidation onto the originally-broken block, tool-gating (axe-only
+> tree chains, etc.), per-category/per-block toggles, and new block
+> categories (dirt/gravel, leaves, mature crops) — is now implemented and
+> covered by automated tests, but is pending a final manual runtime pass
+> before a stable `1.0.0` is tagged. Behavior described below may still
+> change (see `CHANGELOG.md` and `docs/PRE_RELEASE_HANDOFF.md`).
 >
 > **Back up any world you care about before trying this.** Testing and
 > feedback are welcome and expected — please report issues against the
@@ -63,19 +64,45 @@ Multiplayer support is server-authoritative and off by default.
 
 ## Configuration
 
-Harvester writes `harvester.properties` under the Fabric config
-directory on first run (both client and dedicated server), with these
-defaults:
+Harvester writes a fully documented `harvester.properties` under the
+Fabric config directory on first run (both client and dedicated server),
+and migrates an older file in place without losing your settings. On a
+client you can also edit it in-game: press the **config key** (default
+`H`, rebindable in Controls) to open the Harvester screen — a
+self-contained screen that needs no other mod and edits the same file.
+The dedicated server is configured by the file only; no graphical class
+ever loads there.
+
+Key settings (the file itself documents every option):
 
 ```properties
 enabled=true
 maxChain=64
 neighborhood=legacy_26
-diagnosticLogging=false
+consolidateDrops=true
 harvestLogs=true
 harvestOres=true
+harvestDirt=false
+harvestGravel=false
+harvestLeaves=false
+harvestCrops=false
+undergroundRequiresNoSky=true
+undergroundMaxY=63
+undergroundOverworldOnly=true
+allowlist=
+denylist=
+diagnosticLogging=false
 multiplayerAllowed=false
 ```
+
+- `consolidateDrops` — merge the whole action's drops into stacks at the
+  center of the block you broke, instead of scattering them along the vein.
+- The new `harvestDirt`/`harvestGravel`/`harvestLeaves`/`harvestCrops`
+  categories are **off by default** — opt in per category.
+- `allowlist`/`denylist` — comma-separated block identifiers. Precedence:
+  denylist > allowlist > category toggle > default. The denylist always
+  blocks; the allowlist only releases a block whose category is already
+  recognized (it never invents one).
 
 - `maxChain` — total blocks per activation, including the origin block.
   Whole number from 1 to 100; an invalid or out-of-range value falls
@@ -96,10 +123,23 @@ multiplayerAllowed=false
 
 ## Supported blocks
 
-- **Logs**: any block tagged as a log (`c:logs` / vanilla `minecraft:log`).
-- **Ores**: any block carrying a specific ore tag (`c:ores/<material>`,
-  e.g. coal, iron, gold, redstone), gated by the same tool-suitability
-  check vanilla uses for that block.
+Each category chains only while you hold the matching tool; a bare hand
+never starts a chain (but always still breaks the single block you aimed
+at, exactly like vanilla).
+
+- **Logs** (axe): any block tagged as a log (`c:logs` / vanilla
+  `minecraft:log`); different species chain together.
+- **Ores** (suitable pickaxe): any block carrying a specific ore tag
+  (`c:ores/<material>`, e.g. coal, iron, gold, redstone), gated by the
+  same tool-suitability check vanilla uses for that block.
+- **Dirt / gravel** (shovel, off by default): only underground —
+  Overworld, no direct sky access, and `Y <= 63` by default. Gravel
+  breaks top-down so a column never collapses onto an unbroken block.
+- **Leaves** (shears, off by default): the same leaf species, six-face
+  connectivity.
+- **Mature crops** (hoe, off by default): fully-grown wheat only, on one
+  farmland layer — an immature plant is never broken by the chain, and
+  there is no automatic replanting.
 
 ## Known limitations
 

@@ -34,7 +34,8 @@ testing/feedback purposes.
   `build/libs/harvester-b1.7.3-<version>.jar` (the remapped jar; the
   `-dev.jar` in `build/devlibs` and `-sources.jar` are not the
   distributable).
-- Tests: 221 automated tests, 0 failures, as of this pre-release.
+- Tests: 279 automated tests, 0 failures (221 at the beta.1 tag, plus the
+  1.0.0 config/consolidation/category work).
 - Architecture: `core` (pure BFS/classification domain logic, zero
   Minecraft/StationAPI/Fabric import) and `game` (side-agnostic
   classification/discovery/tool-compatibility shared between singleplayer
@@ -60,8 +61,10 @@ testing/feedback purposes.
   Full matrix: `docs/COMPATIBILITY.md`, `docs/ARCHITECTURE.md` ("Final
   multiplayer compatibility matrix").
 - Known limitations (do not re-litigate without a documented regression):
-  fixed (non-configurable) multiplayer rate limit; no in-game
-  configuration GUI; lapis multi-block veins and independent unlit-redstone
+  fixed (non-configurable) multiplayer rate limit (kept fixed by owner
+  decision); the in-game screen covers the simple toggles and `maxChain`
+  only — the advanced `allowlist`/`denylist` and per-tool ID lists stay
+  file-only for 1.0.0; lapis multi-block veins and independent unlit-redstone
   participation supported by the same generic logic but not directly
   observed in a large enough vein; log drops confirmed only by visual
   observation, not automated inventory assertion; no clean dedicated-server
@@ -96,10 +99,15 @@ testing/feedback purposes.
 
 ## Required adjustments before the final version
 
-These are **not yet planned in architectural detail** — each needs its
-own design/decision pass (hook selection, config surface, interaction
-with existing tool-gating, etc.) before implementation begins. Treat this
-list as scope, not a ready-to-implement backlog.
+**Status: all eight are now implemented and covered by automated tests
+(279 total, 0 failures), across three commits — configurable categories;
+drop consolidation; and underground/leaf/crop harvesting. What remains
+before a stable `1.0.0` is the single reduced manual runtime pass (see
+below) and the operator's approval to bump the version and tag.** A
+server-side runtime smoke has already confirmed the mod (including the new
+`@WrapMethod` drop-consolidation mixins) loads cleanly and that config
+migration works in real runtime. The list below is kept as the record of
+what each item became.
 
 1. **In-game configuration UI integration.** Investigate and integrate
    with whatever graphical configuration solution is actually available
@@ -137,6 +145,32 @@ list as scope, not a ready-to-implement backlog.
 8. **Audit for other genuinely relevant gaps** before the stable release,
    without arbitrarily expanding scope beyond what is actually needed for
    a coherent final release.
+
+## Remaining before `1.0.0`: reduced manual runtime
+
+Operator-run, one client pass plus one dedicated-server pass
+(`online-mode=false`). Only the new 1.0.0 behavior — the earlier
+tranches (StationAPI-only compatibility, vanilla-server, rate limiter,
+full lifecycle, dimension change, T1–T6) are not repeated:
+
+1. Config screen opens (config key), toggles/`maxChain` change and persist
+   to `harvester.properties`; absence of any optional mod causes no error.
+2. A log does **not** chain with a bare hand or the wrong tool; it does
+   with an axe; a bare-hand break of a single log still works.
+3. Consolidation: a supported chain drops **one** merged pile at the
+   origin center, **including the origin's own drop**.
+4. Stacks above the max size are split into multiple stacks.
+5. A drop from an unrelated adjacent block is not captured.
+6. Dirt/gravel chain only underground, never on the open surface; gravel
+   does not collapse improperly.
+7. Leaves chain by species with shears only (no pulling a neighboring tree).
+8. Mature wheat chains with a hoe; an immature plant is left intact.
+9. One multiplayer server-authoritative pass of a chain plus consolidation.
+
+A second player is only needed if the collector is found to share global
+state; its per-world/per-owner isolation is already covered by pure tests,
+so a single client is sufficient otherwise. Once this passes, bump the
+version and tag per the release process — not done here.
 
 ## Where to look next
 

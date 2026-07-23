@@ -2,6 +2,7 @@ package io.github.sfaguiar.harvester.server.multiplayer;
 
 import io.github.sfaguiar.harvester.core.BlockCoordinate;
 import io.github.sfaguiar.harvester.core.HarvestGroup;
+import io.github.sfaguiar.harvester.core.HarvestGroupKind;
 import io.github.sfaguiar.harvester.core.HarvestPlan;
 import io.github.sfaguiar.harvester.game.HarvestChainOutcome;
 import io.github.sfaguiar.harvester.game.HarvestToolCompatibility;
@@ -158,6 +159,11 @@ public final class ServerHarvestExecutor {
             if (!included.equals(origin)) {
                 candidates.add(included);
             }
+        }
+        if (groupForLogging.kind() == HarvestGroupKind.GRAVEL) {
+            // Gravity-safe order: break gravel top-down so a column never
+            // collapses onto a not-yet-broken candidate (mirrors the client).
+            candidates.sort((a, b) -> Integer.compare(b.y(), a.y()));
         }
         int totalPlanned = candidates.size();
         if (totalPlanned == 0) {

@@ -3,6 +3,38 @@
 All notable changes to Harvester are recorded here. Versions follow
 [SemVer](https://semver.org/).
 
+## Unreleased (towards 1.0.0)
+
+Implemented since `1.0.0-beta.1`; pending the final manual runtime gate
+before a stable `1.0.0` is tagged. Behavior may still be adjusted.
+
+- **In-game configuration screen.** An autonomous, client-only screen
+  (opened by a rebindable key, default `H`) editing the same
+  `harvester.properties` — no external mod dependency, and nothing
+  graphical ever loads on a dedicated server. (The Glass Config API was
+  evaluated and set aside: it owns its own YAML file, so it cannot keep
+  `harvester.properties` the single authoritative source, and its current
+  line targets Java 21 against this project's pinned Java 17.)
+- **Drop consolidation.** The whole action's drops — including the block
+  you broke by hand — are merged (respecting real stack sizes) and appear
+  in one pile at the center of the origin block. Vanilla drop calculation
+  is unchanged; only where the item entities spawn changes. On by default.
+- **Tool gates by category.** Logs now require an axe to start a chain
+  (bare hands never do); dirt/gravel require a shovel, leaves shears,
+  crops a hoe; ores keep the vanilla pickaxe-suitability check. Vanilla
+  tools are recognized by class, with a configurable per-category ID
+  allowlist for mod tools.
+- **Per-category and per-block enable/disable.** Category toggles plus
+  file-based `allowlist`/`denylist` (precedence: denylist > allowlist >
+  category > default; the allowlist never invents a category).
+- **New categories (off by default).** Underground dirt and gravel
+  (shovel; Overworld + no direct sky + `Y <= 63`; six-face; gravel breaks
+  top-down for gravity safety); leaves (shears; six-face; same species);
+  fully-mature wheat (hoe; horizontal-only; never harvests an immature
+  plant; no auto-replant).
+- Configuration migrates pre-1.0.0 files in place, non-destructively
+  (existing values preserved, new keys appended).
+
 ## 1.0.0-beta.1
 
 **Pre-release, not the final stable version.** Published for testing and

@@ -10,6 +10,9 @@ import io.github.sfaguiar.harvester.core.HarvestGroupKind;
 import io.github.sfaguiar.harvester.core.HarvestGroupResolver;
 import io.github.sfaguiar.harvester.core.HarvestPlan;
 import io.github.sfaguiar.harvester.core.HarvestRequest;
+import io.github.sfaguiar.harvester.core.HorizontalFourNeighborhood;
+import io.github.sfaguiar.harvester.core.NeighborhoodPolicy;
+import io.github.sfaguiar.harvester.core.OrthogonalSixNeighborhood;
 import io.github.sfaguiar.harvester.platform.HarvesterEntrypoint;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
@@ -88,8 +91,31 @@ public final class HarvestDiscoveryAdapter {
                 config.maxChain()
         );
 
-        HarvestPlan plan = ConnectedBlockFinder.discover(request, groupView, config.neighborhoodPolicy());
+        HarvestPlan plan = ConnectedBlockFinder.discover(request, groupView, neighborhoodFor(kind, config));
         return new HarvestDiscoveryOutcome(plan, group);
+    }
+
+    /**
+     * The connectivity a kind uses: logs and ores follow the configurable
+     * {@code neighborhood} (legacy 26 vs orthogonal 6); dirt, gravel, and
+     * leaves are fixed at six faces (owner Decision I — bounds cluster/canopy
+     * spread); crops are fixed at horizontal-4 on one farmland layer.
+     */
+    private static NeighborhoodPolicy neighborhoodFor(HarvestGroupKind kind, HarvesterConfig config) {
+        switch (kind) {
+            case LOGS:
+            case ORE_SPECIFIC_TAGS:
+            case ORE_IDENTITY_FALLBACK:
+                return config.neighborhoodPolicy();
+            case DIRT:
+            case GRAVEL:
+            case LEAVES:
+                return new OrthogonalSixNeighborhood();
+            case CROPS:
+                return new HorizontalFourNeighborhood();
+            default:
+                throw new IllegalStateException("unreachable: " + kind);
+        }
     }
 
     /**

@@ -3,6 +3,7 @@ package io.github.sfaguiar.harvester.client;
 import io.github.sfaguiar.harvester.client.input.HarvesterClientActivationState;
 import io.github.sfaguiar.harvester.core.BlockCoordinate;
 import io.github.sfaguiar.harvester.core.HarvestGroup;
+import io.github.sfaguiar.harvester.core.HarvestGroupKind;
 import io.github.sfaguiar.harvester.core.HarvestPlan;
 import io.github.sfaguiar.harvester.game.HarvestChainOutcome;
 import io.github.sfaguiar.harvester.game.HarvestToolCompatibility;
@@ -118,6 +119,12 @@ public final class SingleplayerHarvestExecutor {
             if (!included.equals(origin)) {
                 candidates.add(included);
             }
+        }
+        if (group.kind() == HarvestGroupKind.GRAVEL) {
+            // Break gravel from the top down so a column never collapses onto
+            // a not-yet-broken candidate; a candidate that has already turned
+            // into a falling entity fails revalidation and simply stops the chain.
+            candidates.sort((a, b) -> Integer.compare(b.y(), a.y()));
         }
         int totalPlanned = candidates.size();
         if (totalPlanned == 0) {
