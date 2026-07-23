@@ -35,9 +35,16 @@ public final class HarvestToolCompatibility {
     private HarvestToolCompatibility() {
     }
 
-    /** Logs never gate on tool; every ore group kind does. Pure — no Minecraft/StationAPI call. */
+    /**
+     * Whether {@code kind} gates the chain on vanilla harvestability
+     * ({@code ItemStack.isSuitableFor}, pickaxe tier) per candidate. Only the
+     * ore kinds do; logs and the 1.0.0 category kinds (dirt, gravel, leaves,
+     * crops) are gated instead by a required tool <em>category</em>
+     * ({@link HarvestToolCategory}) checked once at the origin, not by
+     * per-candidate suitability. Pure — no Minecraft/StationAPI call.
+     */
     public static boolean requiresToolCheck(HarvestGroupKind kind) {
-        return kind != HarvestGroupKind.LOGS;
+        return kind == HarvestGroupKind.ORE_SPECIFIC_TAGS || kind == HarvestGroupKind.ORE_IDENTITY_FALLBACK;
     }
 
     /**

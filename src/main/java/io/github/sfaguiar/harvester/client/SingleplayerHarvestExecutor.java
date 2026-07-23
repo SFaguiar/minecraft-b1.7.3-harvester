@@ -145,7 +145,8 @@ public final class SingleplayerHarvestExecutor {
 
             BlockCoordinate candidate = candidates.get(index);
             BlockState candidateState = candidateStateIfPresent(minecraft.world, candidate);
-            if (candidateState == null || !group.matches(StationBlockDescriptors.describe(candidateState))) {
+            int candidateMeta = minecraft.world.getBlockMeta(candidate.x(), candidate.y(), candidate.z());
+            if (candidateState == null || !group.matches(StationBlockDescriptors.describe(candidateState, candidateMeta))) {
                 HarvesterEntrypoint.LOGGER.debug(
                         "[HARVEST-EXEC] Chain candidate {}/{} no longer valid: {}",
                         index + 1, totalPlanned, candidate

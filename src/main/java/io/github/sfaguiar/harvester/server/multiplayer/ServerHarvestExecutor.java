@@ -87,7 +87,9 @@ public final class ServerHarvestExecutor {
                 () -> environmentValid(player, world),
                 candidate -> {
                     BlockState state = candidateStateIfPresent(world, candidate);
-                    return state != null && group.matches(StationBlockDescriptors.describe(state));
+                    return state != null && group.matches(StationBlockDescriptors.describe(
+                            state, world.getBlockMeta(candidate.x(), candidate.y(), candidate.z())
+                    ));
                 },
                 requiresToolCheck,
                 candidate -> {

@@ -3,10 +3,10 @@ package io.github.sfaguiar.harvester.game;
 import io.github.sfaguiar.harvester.config.HarvesterConfig;
 import io.github.sfaguiar.harvester.core.BlockCoordinate;
 import io.github.sfaguiar.harvester.core.BlockDescriptor;
-import io.github.sfaguiar.harvester.core.BlockDescriptorView;
 import io.github.sfaguiar.harvester.core.BlockGroupView;
 import io.github.sfaguiar.harvester.core.ConnectedBlockFinder;
 import io.github.sfaguiar.harvester.core.HarvestGroup;
+import io.github.sfaguiar.harvester.core.HarvestGroupKind;
 import io.github.sfaguiar.harvester.core.HarvestGroupResolver;
 import io.github.sfaguiar.harvester.core.HarvestPlan;
 import io.github.sfaguiar.harvester.core.HarvestRequest;
@@ -17,38 +17,32 @@ import net.minecraft.world.World;
 import net.modificationstation.stationapi.api.block.BlockState;
 
 import java.util.Optional;
+import java.util.Set;
 
 /**
- * Converts a completed block break into a {@code core} {@link
- * HarvestRequest} and runs discovery — for logs and ores alike. Side-agnostic
- * (takes a {@link PlayerEntity}/{@link World}, never {@code Minecraft} or a
- * server-only type), so this is the single discovery implementation both
- * {@code client.SingleplayerHarvestDiscoveryAdapter} and the multiplayer
- * server adapter delegate to — see {@code ARCHITECTURE.md}, "Reuse vs new
- * adapter". Diagnostic only: never mutates the world, never breaks a block.
+ * Converts a completed block break into a {@code core} {@link HarvestRequest}
+ * and runs discovery — for every supported category. Side-agnostic (takes a
+ * {@link PlayerEntity}/{@link World}, never {@code Minecraft} or a server-only
+ * type), so this is the single discovery implementation both the singleplayer
+ * client adapter and the multiplayer server observer delegate to. Diagnostic
+ * only: never mutates the world, never breaks a block.
  *
- * <p>Classification is entirely {@link StationBlockDescriptors}' and
- * {@link HarvestGroupResolver}'s responsibility: this class captures the
- * origin's {@link BlockDescriptor} once, resolves its {@link HarvestGroup}
- * (log priority, specific ore tags, or identity fallback — see
- * {@link HarvestGroupResolver}), applies the matching {@code
- * harvestLogs}/{@code harvestOres} configuration gate, and — for an ore
- * group only — the pre-break tool-harvestability gate, before ever running
- * the BFS. No block ID or tag constant drives classification here; the raw
- * pre-break ID this method still accepts is carried into {@link
- * HarvestRequest#originBlockId()} purely as diagnostic metadata for the
- * caller's own logging.
- *
- * <p>Neighbor connectivity uses {@code config}'s configured
- * {@link io.github.sfaguiar.harvester.core.NeighborhoodPolicy} for both logs
- * and ores; the same policy applies to whichever group kind was resolved.
- *
- * <p><strong>Not unit-testable in isolation:</strong> {@link BlockState}
- * requires StationAPI's registry to be initialized, which does not happen
- * in a pure JUnit run without starting Minecraft. Classification and
- * gating are unit-tested at the pure layer instead — see {@code
- * HarvestGroupResolverTest}/{@code HarvestGroupTest} (core) and {@code
- * HarvesterConfigTest#isHarvestEnabledFor} (config).
+ * <p>Gating, in order, before any BFS runs:
+ * <ol>
+ *   <li>classification + resolution ({@link StationBlockDescriptors},
+ *   {@link HarvestGroupResolver});</li>
+ *   <li>enable/disable precedence for the origin identity
+ *   ({@link HarvesterConfig#isBlockChainable} — denylist &gt; allowlist &gt;
+ *   category toggle);</li>
+ *   <li>the tool gate: ore kinds use vanilla harvestability
+ *   ({@link HarvestToolCompatibility#canHarvest}); logs/dirt/gravel/leaves/
+ *   crops require the right tool <em>category</em>
+ *   ({@link HarvestToolCategory}) held at the origin;</li>
+ *   <li>the underground rule for dirt/gravel ({@link UndergroundRule}).</li>
+ * </ol>
+ * The same precedence, and the underground rule, are re-applied per candidate
+ * inside the {@link BlockGroupView} so a denied/exposed block partway through
+ * never joins the chain.
  */
 public final class HarvestDiscoveryAdapter {
 
@@ -56,16 +50,15 @@ public final class HarvestDiscoveryAdapter {
     }
 
     /**
-     * @param preBreakBlockId diagnostic metadata only (carried into the
-     *                        resulting {@link HarvestRequest}), never used
-     *                        to decide membership
-     * @param preBreakState   the origin's own {@link BlockState}, captured
-     *                        by the caller before the break completed
-     * @return {@code null} when the origin is ineligible (neither a log nor
-     *         an ore), its group kind is gated off by {@code config}, or —
-     *         for an ore group — {@code player}'s currently held item
-     *         cannot correctly harvest the origin; discovery never runs in
-     *         any of those cases
+     * @param preBreakBlockId diagnostic metadata only, never used to decide
+     *                        membership
+     * @param preBreakMeta    the origin's raw pre-break metadata (leaf
+     *                        species / crop maturity)
+     * @param preBreakState   the origin's own {@link BlockState}, captured by
+     *                        the caller before the break completed
+     * @return {@code null} when the origin is ineligible, disabled by
+     *         precedence, missing the required tool, or (dirt/gravel) not
+     *         underground; discovery never runs in any of those cases
      */
     public static HarvestDiscoveryOutcome discoverForCompletedBreak(
             HarvesterConfig config,
@@ -75,41 +68,40 @@ public final class HarvestDiscoveryAdapter {
             int originY,
             int originZ,
             int preBreakBlockId,
+            int preBreakMeta,
             BlockState preBreakState
     ) {
-        BlockDescriptor originDescriptor = StationBlockDescriptors.describe(preBreakState);
+        BlockDescriptor originDescriptor = StationBlockDescriptors.describe(preBreakState, preBreakMeta);
         Optional<HarvestGroup> resolved = HarvestGroupResolver.resolve(originDescriptor);
         if (resolved.isEmpty()) {
             HarvesterEntrypoint.LOGGER.debug(
-                    "[HARVEST-EXEC] Discovery skipped: origin is not a log or a recognized ore ({}).",
-                    originDescriptor
+                    "[HARVEST-EXEC] Discovery skipped: origin is not a recognized harvestable ({}).", originDescriptor
             );
             return null;
         }
         HarvestGroup group = resolved.get();
+        HarvestGroupKind kind = group.kind();
 
-        if (!config.isHarvestEnabledFor(group.kind())) {
+        if (!config.isBlockChainable(originDescriptor.registryIdentity(), kind)) {
             HarvesterEntrypoint.LOGGER.debug(
-                    "[HARVEST-EXEC] Discovery skipped: {} harvesting disabled by configuration.", group.kind()
+                    "[HARVEST-EXEC] Discovery skipped: {} ({}) disabled by configuration (toggle/denylist).",
+                    kind, originDescriptor.registryIdentity()
             );
             return null;
         }
 
-        if (HarvestToolCompatibility.requiresToolCheck(group.kind())) {
-            ItemStack heldItem = player != null ? player.getHand() : null;
-            if (!HarvestToolCompatibility.canHarvest(player, world, heldItem, originX, originY, originZ, preBreakState)) {
-                HarvesterEntrypoint.LOGGER.debug(
-                        "[HARVEST-EXEC] Discovery skipped: held item cannot correctly harvest the {} origin.",
-                        group.kind()
-                );
-                return null;
-            }
+        if (!originToolGatePasses(config, player, world, originX, originY, originZ, preBreakState, kind)) {
+            return null;
         }
 
-        BlockDescriptorView descriptorView = coordinate -> StationBlockDescriptors.describe(
-                world.getBlockState(coordinate.x(), coordinate.y(), coordinate.z())
-        );
-        BlockGroupView groupView = BlockGroupView.byDescriptor(descriptorView, group);
+        if (isUndergroundKind(kind) && !undergroundAt(config, world, originX, originY, originZ)) {
+            HarvesterEntrypoint.LOGGER.debug(
+                    "[HARVEST-EXEC] Discovery skipped: {} origin is not underground.", kind
+            );
+            return null;
+        }
+
+        BlockGroupView groupView = coordinate -> candidateIsMember(config, world, group, kind, coordinate);
 
         HarvestRequest request = new HarvestRequest(
                 new BlockCoordinate(originX, originY, originZ),
@@ -120,5 +112,74 @@ public final class HarvestDiscoveryAdapter {
 
         HarvestPlan plan = ConnectedBlockFinder.discover(request, groupView, config.neighborhoodPolicy());
         return new HarvestDiscoveryOutcome(plan, group);
+    }
+
+    private static boolean originToolGatePasses(
+            HarvesterConfig config, PlayerEntity player, World world,
+            int x, int y, int z, BlockState state, HarvestGroupKind kind
+    ) {
+        if (HarvestToolCompatibility.requiresToolCheck(kind)) {
+            ItemStack heldItem = player != null ? player.getHand() : null;
+            if (!HarvestToolCompatibility.canHarvest(player, world, heldItem, x, y, z, state)) {
+                HarvesterEntrypoint.LOGGER.debug(
+                        "[HARVEST-EXEC] Discovery skipped: held item cannot correctly harvest the {} origin.", kind
+                );
+                return false;
+            }
+            return true;
+        }
+        Optional<HarvestToolCategory> requiredCategory = HarvestToolCategory.requiredFor(kind);
+        if (requiredCategory.isPresent()) {
+            HarvestToolCategory category = requiredCategory.get();
+            ItemStack heldItem = player != null ? player.getHand() : null;
+            if (!category.matches(heldItem, toolAllowlist(config, category))) {
+                HarvesterEntrypoint.LOGGER.debug(
+                        "[HARVEST-EXEC] Discovery skipped: origin requires a {} to start the {} chain.", category, kind
+                );
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean candidateIsMember(
+            HarvesterConfig config, World world, HarvestGroup group, HarvestGroupKind kind, BlockCoordinate coordinate
+    ) {
+        int x = coordinate.x();
+        int y = coordinate.y();
+        int z = coordinate.z();
+        BlockDescriptor descriptor = StationBlockDescriptors.describe(
+                world.getBlockState(x, y, z), world.getBlockMeta(x, y, z)
+        );
+        if (!group.matches(descriptor)) {
+            return false;
+        }
+        if (!config.isBlockChainable(descriptor.registryIdentity(), kind)) {
+            return false;
+        }
+        return !isUndergroundKind(kind) || undergroundAt(config, world, x, y, z);
+    }
+
+    private static boolean isUndergroundKind(HarvestGroupKind kind) {
+        return kind == HarvestGroupKind.DIRT || kind == HarvestGroupKind.GRAVEL;
+    }
+
+    private static boolean undergroundAt(HarvesterConfig config, World world, int x, int y, int z) {
+        return UndergroundRule.isUnderground(world.dimension.id, world.hasSkyLight(x, y, z), y, config);
+    }
+
+    private static Set<Integer> toolAllowlist(HarvesterConfig config, HarvestToolCategory category) {
+        switch (category) {
+            case AXE:
+                return config.toolAxeIds();
+            case SHOVEL:
+                return config.toolShovelIds();
+            case SHEARS:
+                return config.toolShearsIds();
+            case HOE:
+                return config.toolHoeIds();
+            default:
+                throw new IllegalStateException("unreachable: " + category);
+        }
     }
 }

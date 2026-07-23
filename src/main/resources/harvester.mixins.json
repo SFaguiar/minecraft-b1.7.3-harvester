@@ -6,7 +6,8 @@
   "mixins": [],
   "client": [
     "client.SingleplayerInteractionManagerObserverMixin",
-    "client.ClientNetworkHandlerConnectMixin"
+    "client.ClientNetworkHandlerConnectMixin",
+    "client.MinecraftInstanceAccessor"
   ],
   "server": [
     "server.ServerPlayerEntityDisconnectMixin",

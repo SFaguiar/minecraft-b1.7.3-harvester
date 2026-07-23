@@ -1,10 +1,13 @@
 package io.github.sfaguiar.harvester.client.input;
 
+import io.github.sfaguiar.harvester.client.config.HarvesterConfigScreen;
 import io.github.sfaguiar.harvester.client.multiplayer.HarvesterMultiplayerActivationState;
+import io.github.sfaguiar.harvester.mixin.client.MinecraftInstanceAccessor;
 import io.github.sfaguiar.harvester.platform.HarvesterEntrypoint;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.mine_diver.unsafeevents.listener.EventListener;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.option.KeyBinding;
 import net.modificationstation.stationapi.api.client.event.keyboard.KeyStateChangedEvent;
 import net.modificationstation.stationapi.api.client.event.option.KeyBindingRegisterEvent;
@@ -42,26 +45,35 @@ import org.lwjgl.input.Keyboard;
 public class HarvesterKeyBindingListener {
 
     private static KeyBinding activateKeyBinding;
+    private static KeyBinding configKeyBinding;
 
     @EventListener
     public void registerKeyBindings(KeyBindingRegisterEvent event) {
         activateKeyBinding = new KeyBinding("key.harvester.activate", Keyboard.KEY_V);
         event.register(activateKeyBinding);
+        configKeyBinding = new KeyBinding("key.harvester.config", Keyboard.KEY_H);
+        event.register(configKeyBinding);
         HarvesterEntrypoint.LOGGER.info(
-                "[HARVEST-EXEC] Activation key binding registered (default: V)."
+                "[HARVEST-EXEC] Key bindings registered (activate: V, config: H — both rebindable in Controls)."
         );
     }
 
     @EventListener
     public void keyStateChanged(KeyStateChangedEvent event) {
-        if (activateKeyBinding == null) {
-            return;
-        }
-        if (Keyboard.getEventKey() != activateKeyBinding.code) {
+        int eventKey = Keyboard.getEventKey();
+        boolean pressed = Keyboard.getEventKeyState();
+
+        if (configKeyBinding != null && eventKey == configKeyBinding.code) {
+            if (pressed && event.environment == KeyStateChangedEvent.Environment.IN_GAME) {
+                openConfigScreen();
+            }
             return;
         }
 
-        boolean pressed = Keyboard.getEventKeyState();
+        if (activateKeyBinding == null || eventKey != activateKeyBinding.code) {
+            return;
+        }
+
         if (pressed && event.environment != KeyStateChangedEvent.Environment.IN_GAME) {
             // A press inside a GUI must never activate the Harvester.
             return;
@@ -75,5 +87,12 @@ public class HarvesterKeyBindingListener {
         }
 
         HarvesterMultiplayerActivationState.onKeyStateChanged(pressed);
+    }
+
+    private static void openConfigScreen() {
+        Minecraft minecraft = MinecraftInstanceAccessor.harvester$getInstance();
+        if (minecraft != null) {
+            minecraft.setScreen(new HarvesterConfigScreen(minecraft.currentScreen));
+        }
     }
 }

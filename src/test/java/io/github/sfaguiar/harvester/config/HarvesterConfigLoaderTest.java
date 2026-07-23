@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -283,6 +284,51 @@ final class HarvesterConfigLoaderTest {
     }
 
     @Test
+    void parse_newBooleanAndListKeys_areParsed() {
+        Properties p = new Properties();
+        p.setProperty("consolidateDrops", "false");
+        p.setProperty("harvestDirt", "true");
+        p.setProperty("undergroundMaxY", "40");
+        p.setProperty("allowlist", "minecraft:dirt, minecraft:gravel");
+        p.setProperty("denylist", "minecraft:log");
+        p.setProperty("toolAxeIds", "279, 280");
+
+        HarvesterConfigLoader.LoadResult result = HarvesterConfigLoader.parse(p);
+        HarvesterConfig config = result.config();
+
+        assertFalse(config.consolidateDrops());
+        assertTrue(config.harvestDirt());
+        assertEquals(40, config.undergroundMaxY());
+        assertEquals(Set.of("minecraft:dirt", "minecraft:gravel"), config.allowlist());
+        assertEquals(Set.of("minecraft:log"), config.denylist());
+        assertEquals(Set.of(279, 280), config.toolAxeIds());
+        assertTrue(result.warnings().isEmpty());
+    }
+
+    @Test
+    void parse_invalidToolIdEntry_warnsAndSkipsThatEntryOnly() {
+        Properties p = new Properties();
+        p.setProperty("toolShovelIds", "277, not-a-number, 278");
+
+        HarvesterConfigLoader.LoadResult result = HarvesterConfigLoader.parse(p);
+
+        assertEquals(Set.of(277, 278), result.config().toolShovelIds());
+        assertEquals(1, result.warnings().size());
+        assertTrue(result.warnings().get(0).contains("toolShovelIds"));
+    }
+
+    @Test
+    void parse_undergroundMaxYOutOfRange_fallsBackToDefault() {
+        Properties p = new Properties();
+        p.setProperty("undergroundMaxY", "9999");
+
+        HarvesterConfigLoader.LoadResult result = HarvesterConfigLoader.parse(p);
+
+        assertEquals(HarvesterConfig.DEFAULT_UNDERGROUND_MAX_Y, result.config().undergroundMaxY());
+        assertEquals(1, result.warnings().size());
+    }
+
+    @Test
     void parse_unknownProperties_areIgnoredWithoutWarning() {
         Properties properties = new Properties();
         properties.setProperty("someUnknownFutureSetting", "whatever");
@@ -294,7 +340,7 @@ final class HarvesterConfigLoaderTest {
     }
 
     @Test
-    void loadOrCreateDefaults_existingValidFile_isLoadedAsIs(@TempDir Path dir) throws IOException {
+    void loadOrCreateDefaults_existingValidFile_valuesLoadedAndMigratedInPlace(@TempDir Path dir) throws IOException {
         Path configFile = dir.resolve("harvester.properties");
         Files.writeString(
                 configFile,
@@ -304,21 +350,31 @@ final class HarvesterConfigLoaderTest {
 
         HarvesterConfigLoader.LoadResult result = HarvesterConfigLoader.loadOrCreateDefaults(configFile);
 
+        // Every value the user set is preserved verbatim.
         assertFalse(result.config().enabled());
         assertEquals(16, result.config().maxChain());
         assertEquals(NeighborhoodChoice.ORTHOGONAL_6, result.config().neighborhood());
         assertTrue(result.config().diagnosticLogging());
-        assertTrue(result.warnings().isEmpty());
+        // A pre-1.0.0 file is missing the new keys, so it is migrated in place:
+        // exactly one migration notice, and the rewritten file now carries the
+        // new keys while preserving the user's original values.
+        assertEquals(1, result.warnings().size());
+        assertTrue(result.warnings().get(0).contains("Migrated"));
+        String rewritten = Files.readString(configFile, StandardCharsets.UTF_8);
+        assertTrue(rewritten.contains("enabled=false"));
+        assertTrue(rewritten.contains("maxChain=16"));
+        assertTrue(rewritten.contains("consolidateDrops=true"));
+        assertTrue(rewritten.contains("harvestDirt=false"));
     }
 
     /**
-     * A file written before {@code harvestLogs}/{@code harvestOres} existed
-     * must keep loading cleanly (both default to {@code true}, no warning)
-     * and — just as important — must not be rewritten on disk merely to add
-     * the two new lines; only a genuinely missing file is ever (re)written.
+     * A file written before the 1.0.0 keys existed must keep loading cleanly
+     * (each missing key defaults) and be migrated <em>non-destructively</em>:
+     * the file is rewritten to include every current key, preserving each
+     * value the user had set, and a single migration notice is emitted.
      */
     @Test
-    void loadOrCreateDefaults_preExistingFileWithoutNewProperties_defaultsBothToTrueAndFileIsUntouched(
+    void loadOrCreateDefaults_preExistingFileWithoutNewProperties_defaultsAndMigratesNonDestructively(
             @TempDir Path dir
     ) throws IOException {
         Path configFile = dir.resolve("harvester.properties");
@@ -330,8 +386,15 @@ final class HarvesterConfigLoaderTest {
         assertTrue(result.config().harvestLogs());
         assertTrue(result.config().harvestOres());
         assertFalse(result.config().multiplayerAllowed());
-        assertTrue(result.warnings().isEmpty());
-        assertEquals(oldFormatContents, Files.readString(configFile, StandardCharsets.UTF_8));
+        assertTrue(result.config().consolidateDrops());
+        assertFalse(result.config().harvestDirt());
+        assertEquals(1, result.warnings().size());
+        assertTrue(result.warnings().get(0).contains("Migrated"));
+        // Non-destructive: the user's original values survive the rewrite.
+        String rewritten = Files.readString(configFile, StandardCharsets.UTF_8);
+        assertTrue(rewritten.contains("enabled=false"));
+        assertTrue(rewritten.contains("maxChain=16"));
+        assertTrue(rewritten.contains("neighborhood=orthogonal_6"));
     }
 
     @Test
@@ -350,6 +413,10 @@ final class HarvesterConfigLoaderTest {
         assertTrue(result.config().enabled());
         assertEquals(HarvesterConfig.DEFAULT_MAX_CHAIN, result.config().maxChain());
         assertEquals(NeighborhoodChoice.LEGACY_26, result.config().neighborhood());
-        assertEquals(1, result.warnings().size());
+        // One warning for the invalid maxChain, plus one migration notice
+        // (this pre-1.0.0 file also lacks the new keys).
+        assertEquals(2, result.warnings().size());
+        assertTrue(result.warnings().stream().anyMatch(w -> w.contains("maxChain")));
+        assertTrue(result.warnings().stream().anyMatch(w -> w.contains("Migrated")));
     }
 }
