@@ -71,35 +71,13 @@ public final class HarvestDiscoveryAdapter {
             int preBreakMeta,
             BlockState preBreakState
     ) {
-        BlockDescriptor originDescriptor = StationBlockDescriptors.describe(preBreakState, preBreakMeta);
-        Optional<HarvestGroup> resolved = HarvestGroupResolver.resolve(originDescriptor);
-        if (resolved.isEmpty()) {
-            HarvesterEntrypoint.LOGGER.debug(
-                    "[HARVEST-EXEC] Discovery skipped: origin is not a recognized harvestable ({}).", originDescriptor
-            );
+        HarvestGroup group = eligibleOriginGroup(
+                config, player, world, originX, originY, originZ, preBreakMeta, preBreakState
+        );
+        if (group == null) {
             return null;
         }
-        HarvestGroup group = resolved.get();
         HarvestGroupKind kind = group.kind();
-
-        if (!config.isBlockChainable(originDescriptor.registryIdentity(), kind)) {
-            HarvesterEntrypoint.LOGGER.debug(
-                    "[HARVEST-EXEC] Discovery skipped: {} ({}) disabled by configuration (toggle/denylist).",
-                    kind, originDescriptor.registryIdentity()
-            );
-            return null;
-        }
-
-        if (!originToolGatePasses(config, player, world, originX, originY, originZ, preBreakState, kind)) {
-            return null;
-        }
-
-        if (isUndergroundKind(kind) && !undergroundAt(config, world, originX, originY, originZ)) {
-            HarvesterEntrypoint.LOGGER.debug(
-                    "[HARVEST-EXEC] Discovery skipped: {} origin is not underground.", kind
-            );
-            return null;
-        }
 
         BlockGroupView groupView = coordinate -> candidateIsMember(config, world, group, kind, coordinate);
 
@@ -112,6 +90,53 @@ public final class HarvestDiscoveryAdapter {
 
         HarvestPlan plan = ConnectedBlockFinder.discover(request, groupView, config.neighborhoodPolicy());
         return new HarvestDiscoveryOutcome(plan, group);
+    }
+
+    /**
+     * Whether {@code (x,y,z)} would start a chain right now — classification
+     * resolves a group, the enable/disable precedence permits it, the tool
+     * gate passes, and (dirt/gravel) the origin is underground. Used by the
+     * drop-consolidation break wrapper to decide, <em>before</em> the origin
+     * break, whether to open a capture context (so the origin's own drop is
+     * captured); it does not run BFS, so it never says how many candidates
+     * exist.
+     */
+    public static boolean isOriginEligible(
+            HarvesterConfig config, PlayerEntity player, World world,
+            int x, int y, int z, int meta, BlockState state
+    ) {
+        return eligibleOriginGroup(config, player, world, x, y, z, meta, state) != null;
+    }
+
+    private static HarvestGroup eligibleOriginGroup(
+            HarvesterConfig config, PlayerEntity player, World world,
+            int x, int y, int z, int meta, BlockState state
+    ) {
+        BlockDescriptor originDescriptor = StationBlockDescriptors.describe(state, meta);
+        Optional<HarvestGroup> resolved = HarvestGroupResolver.resolve(originDescriptor);
+        if (resolved.isEmpty()) {
+            HarvesterEntrypoint.LOGGER.debug(
+                    "[HARVEST-EXEC] Discovery skipped: origin is not a recognized harvestable ({}).", originDescriptor
+            );
+            return null;
+        }
+        HarvestGroup group = resolved.get();
+        HarvestGroupKind kind = group.kind();
+        if (!config.isBlockChainable(originDescriptor.registryIdentity(), kind)) {
+            HarvesterEntrypoint.LOGGER.debug(
+                    "[HARVEST-EXEC] Discovery skipped: {} ({}) disabled by configuration (toggle/denylist).",
+                    kind, originDescriptor.registryIdentity()
+            );
+            return null;
+        }
+        if (!originToolGatePasses(config, player, world, x, y, z, state, kind)) {
+            return null;
+        }
+        if (isUndergroundKind(kind) && !undergroundAt(config, world, x, y, z)) {
+            HarvesterEntrypoint.LOGGER.debug("[HARVEST-EXEC] Discovery skipped: {} origin is not underground.", kind);
+            return null;
+        }
+        return group;
     }
 
     private static boolean originToolGatePasses(
