@@ -3,10 +3,12 @@
 All notable changes to Harvester are recorded here. Versions follow
 [SemVer](https://semver.org/).
 
-## Unreleased (towards 1.0.0)
+## 1.0.0 — 2026-07-24
 
-Implemented since `1.0.0-beta.1`; pending the final manual runtime gate
-before a stable `1.0.0` is tagged. Behavior may still be adjusted.
+Stable release. Implemented since `1.0.0-beta.1`, covered by 279
+automated tests (0 failures) and a final 10/10 manual runtime gate
+across singleplayer, multiplayer, and dedicated server. No known
+blocking defects.
 
 - **In-game configuration screen.** An autonomous, client-only screen
   (opened by a rebindable key, default `H`) editing the same

@@ -1,5 +1,15 @@
 # Pre-release handoff — Harvester `1.0.0-beta.1`
 
+**SUPERSEDED by `v1.0.0`.** All eight adjustments listed below under
+"Required adjustments before the final version" were implemented and
+shipped in the `1.0.0` release, which passed 279 automated tests (0
+failures) and a final 10/10 manual runtime gate (singleplayer,
+multiplayer, and dedicated server, no reservations). This document is a
+historical record of the beta-to-1.0.0 transition and must not be read as
+the current operational state — see
+`better-beta-program/docs/operations/CURRENT_STATE.md` and
+`NEXT_ACTIONS.md` for that.
+
 Canonical handoff document for continuing Harvester development without
 depending on any external conversation history. This is a living
 document: update it in place rather than creating a parallel one when the
