@@ -224,7 +224,7 @@ abstract class SingleplayerInteractionManagerObserverMixin
         }
 
         HarvestDiscoveryOutcome outcome = SingleplayerHarvestDiscoveryAdapter.discoverForCompletedBreak(
-                minecraft, minecraft.world, x, y, z, blockId, blockState
+                minecraft, minecraft.world, x, y, z, blockId, blockMeta, blockState
         );
 
         if (outcome == null) {

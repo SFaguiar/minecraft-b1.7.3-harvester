@@ -9,7 +9,7 @@
     "sources": "https://github.com/SFaguiar/minecraft-b1.7.3-harvester",
     "issues": "https://github.com/SFaguiar/minecraft-b1.7.3-harvester/issues"
   },
-  "license": "LicenseRef-Harvester-Audit-Pending",
+  "license": "0BSD",
   "environment": "*",
   "entrypoints": {
     "main": ["io.github.sfaguiar.harvester.platform.HarvesterEntrypoint"],

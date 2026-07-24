@@ -152,7 +152,7 @@ abstract class ServerPlayerInteractionManagerObserverMixin {
             return;
         }
 
-        harvester$maybeExecuteChain(serverPlayer, x, y, z, preBlockId, preBlockState, preBreakHeldItem);
+        harvester$maybeExecuteChain(serverPlayer, x, y, z, preBlockId, preBlockMeta, preBlockState, preBreakHeldItem);
     }
 
     /**
@@ -168,6 +168,7 @@ abstract class ServerPlayerInteractionManagerObserverMixin {
             int y,
             int z,
             int preBlockId,
+            int preBlockMeta,
             BlockState preBlockState,
             HarvesterHeldItemSnapshot preBreakHeldItem
     ) {
@@ -185,7 +186,7 @@ abstract class ServerPlayerInteractionManagerObserverMixin {
         }
 
         HarvestDiscoveryOutcome outcome = HarvestDiscoveryAdapter.discoverForCompletedBreak(
-                HarvesterServerConfigState.current(), serverPlayer, world, x, y, z, preBlockId, preBlockState
+                HarvesterServerConfigState.current(), serverPlayer, world, x, y, z, preBlockId, preBlockMeta, preBlockState
         );
         if (outcome == null) {
             return;

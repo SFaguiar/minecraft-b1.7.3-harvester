@@ -3,17 +3,22 @@
   "minVersion": "0.8",
   "package": "io.github.sfaguiar.harvester.mixin",
   "compatibilityLevel": "JAVA_17",
-  "mixins": [],
+  "mixins": [
+    "BlockDropStackMixin"
+  ],
   "client": [
     "client.SingleplayerInteractionManagerObserverMixin",
-    "client.ClientNetworkHandlerConnectMixin"
+    "client.SingleplayerBreakConsolidationMixin",
+    "client.ClientNetworkHandlerConnectMixin",
+    "client.MinecraftInstanceAccessor"
   ],
   "server": [
     "server.ServerPlayerEntityDisconnectMixin",
     "server.ServerPlayNetworkHandlerDisconnectMixin",
     "server.PlayerManagerLifecycleMixin",
     "server.MinecraftServerShutdownMixin",
-    "server.ServerPlayerInteractionManagerObserverMixin"
+    "server.ServerPlayerInteractionManagerObserverMixin",
+    "server.ServerPlayerInteractionManagerConsolidationMixin"
   ],
   "injectors": { "defaultRequire": 1 }
 }

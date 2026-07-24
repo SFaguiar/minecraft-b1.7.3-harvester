@@ -21,13 +21,12 @@ StationAPI `2.0.0-alpha.6.2`, Java 17, Gradle Wrapper `8.12.1`, mappings
 
 Não repita gates já concluídos sem uma causa de regressão documentada.
 
-- Implementados e validados por build/testes: keybinding de ativação,
-  observador de quebra singleplayer, descoberta BFS
-  (`BlockTags.LOGS`, 26 vizinhos), quebra adicional única, e cadeia
-  completa de candidatos.
-- Pendentes de validação manual: runtime real da cadeia completa (vários
-  blocos em uma única ativação), drops, durabilidade.
-- Não implementados: multiplayer, servidor dedicado.
+- Implementados e validados por build/testes automatizados e por gate
+  manual completo (singleplayer e multiplayer, servidor autoritativo):
+  keybinding de ativação e de configuração, descoberta BFS configurável
+  por categoria (troncos, minérios, terra, cascalho, folhas,
+  plantações), consolidação de drops na origem, tela de configuração
+  in-game, e persistência de configuração.
 - Estado canônico completo (mantido no repositório de governança, não
   neste): `better-beta-program/docs/operations/CURRENT_STATE.md`.
 

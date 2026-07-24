@@ -54,6 +54,52 @@ final class ServerHarvestExecutorTest {
         return result;
     }
 
+    /** A vertical column of {@code matchingCount} matching blocks going up from the origin at (0,0,0). */
+    private static HarvestPlan verticalUpPlan(int limit, int matchingCount) {
+        Map<BlockCoordinate, Integer> world = new HashMap<>();
+        for (int i = 1; i <= matchingCount; i++) {
+            world.put(new BlockCoordinate(0, i, 0), LOG_ID);
+        }
+        BlockWorldView view = coordinate -> world.getOrDefault(coordinate, 0);
+        HarvestRequest request = new HarvestRequest(new BlockCoordinate(0, 0, 0), LOG_ID, true, limit);
+        return ConnectedBlockFinder.discover(
+                request, BlockGroupView.byId(view, BlockMatcher.ofId(LOG_ID)), new OrthogonalSixNeighborhood()
+        );
+    }
+
+    @Test
+    void gravelKind_breaksTopDown_forGravitySafety() {
+        HarvestPlan plan = verticalUpPlan(64, 3); // candidates (0,1,0), (0,2,0), (0,3,0) in BFS (ascending) order
+        List<BlockCoordinate> attempted = new ArrayList<>();
+
+        HarvestChainOutcome outcome = ServerHarvestExecutor.runChain(
+                true, () -> true, () -> true, c -> true, false, c -> true,
+                () -> ABSENT, c -> { attempted.add(c); return true; },
+                plan, ABSENT, ABSENT, "player", HarvestGroup.gravel()
+        );
+
+        assertEquals(HarvestChainOutcome.CHAIN_COMPLETED, outcome);
+        assertEquals(
+                List.of(new BlockCoordinate(0, 3, 0), new BlockCoordinate(0, 2, 0), new BlockCoordinate(0, 1, 0)),
+                attempted,
+                "gravel must break from the top down"
+        );
+    }
+
+    @Test
+    void nonGravelKind_keepsThePlansOwnOrder() {
+        HarvestPlan plan = verticalUpPlan(64, 3);
+        List<BlockCoordinate> attempted = new ArrayList<>();
+
+        ServerHarvestExecutor.runChain(
+                true, () -> true, () -> true, c -> true, false, c -> true,
+                () -> ABSENT, c -> { attempted.add(c); return true; },
+                plan, ABSENT, ABSENT, "player", HarvestGroup.logs()
+        );
+
+        assertEquals(additionalCandidatesOf(plan), attempted, "non-gravel kinds are not reordered");
+    }
+
     @Test
     void disabled_skipsWithoutAttemptingAnyBreak() {
         HarvestPlan plan = linearPlan(64, 3);

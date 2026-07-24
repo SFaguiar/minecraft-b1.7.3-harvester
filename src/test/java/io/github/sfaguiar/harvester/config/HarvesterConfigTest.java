@@ -4,6 +4,8 @@ import io.github.sfaguiar.harvester.core.HarvestGroupKind;
 import io.github.sfaguiar.harvester.core.LegacyTwentySixNeighborhood;
 import org.junit.jupiter.api.Test;
 
+import java.util.Set;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -99,5 +101,62 @@ final class HarvesterConfigTest {
 
         HarvesterConfig notAllowed = new HarvesterConfig(true, 64, NeighborhoodChoice.LEGACY_26, false, true, true, false);
         assertFalse(notAllowed.multiplayerAllowed());
+    }
+
+    @Test
+    void newDefaults_matchOwnerDecisions() {
+        HarvesterConfig d = HarvesterConfig.DEFAULTS;
+        assertTrue(d.consolidateDrops());
+        assertFalse(d.harvestDirt());
+        assertFalse(d.harvestGravel());
+        assertFalse(d.harvestLeaves());
+        assertFalse(d.harvestCrops());
+        assertTrue(d.undergroundRequiresNoSky());
+        assertEquals(63, d.undergroundMaxY());
+        assertTrue(d.undergroundOverworldOnly());
+        assertTrue(d.allowlist().isEmpty());
+        assertTrue(d.denylist().isEmpty());
+        assertTrue(d.toolAxeIds().isEmpty());
+    }
+
+    @Test
+    void isHarvestEnabledFor_mapsNewKindsToTheirToggles() {
+        HarvesterConfig config = HarvesterConfig.DEFAULTS.toBuilder()
+                .harvestDirt(true).harvestGravel(false).harvestLeaves(true).harvestCrops(false).build();
+        assertTrue(config.isHarvestEnabledFor(HarvestGroupKind.DIRT));
+        assertFalse(config.isHarvestEnabledFor(HarvestGroupKind.GRAVEL));
+        assertTrue(config.isHarvestEnabledFor(HarvestGroupKind.LEAVES));
+        assertFalse(config.isHarvestEnabledFor(HarvestGroupKind.CROPS));
+    }
+
+    @Test
+    void isBlockChainable_denylistBlocksEvenWhenCategoryEnabled() {
+        HarvesterConfig config = HarvesterConfig.DEFAULTS.toBuilder()
+                .harvestLogs(true).denylist(Set.of("minecraft:log")).build();
+        assertFalse(config.isBlockChainable("minecraft:log", HarvestGroupKind.LOGS));
+    }
+
+    @Test
+    void isBlockChainable_allowlistReleasesWhenCategoryDisabled() {
+        HarvesterConfig config = HarvesterConfig.DEFAULTS.toBuilder()
+                .harvestDirt(false).allowlist(Set.of("minecraft:dirt")).build();
+        assertTrue(config.isBlockChainable("minecraft:dirt", HarvestGroupKind.DIRT));
+        // A different dirt-category block not on the allowlist stays disabled.
+        assertFalse(config.isBlockChainable("modded:red_dirt", HarvestGroupKind.DIRT));
+    }
+
+    @Test
+    void isBlockChainable_denylistOutranksAllowlist() {
+        HarvesterConfig config = HarvesterConfig.DEFAULTS.toBuilder()
+                .harvestLogs(true).allowlist(Set.of("minecraft:log")).denylist(Set.of("minecraft:log")).build();
+        assertFalse(config.isBlockChainable("minecraft:log", HarvestGroupKind.LOGS));
+    }
+
+    @Test
+    void isBlockChainable_fallsBackToCategoryToggle() {
+        HarvesterConfig on = HarvesterConfig.DEFAULTS.toBuilder().harvestLogs(true).build();
+        HarvesterConfig off = HarvesterConfig.DEFAULTS.toBuilder().harvestLogs(false).build();
+        assertTrue(on.isBlockChainable("minecraft:log", HarvestGroupKind.LOGS));
+        assertFalse(off.isBlockChainable("minecraft:log", HarvestGroupKind.LOGS));
     }
 }

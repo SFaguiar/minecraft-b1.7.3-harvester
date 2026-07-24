@@ -1,21 +1,31 @@
 # Harvester
 
-> **Pre-release (`1.0.0-beta.1`).** This is not the final stable release.
-> Additional functionality and UX adjustments are still planned before a
-> final version (see `CHANGELOG.md` and `docs/PRE_RELEASE_HANDOFF.md`)  —
-> notably in-game configuration UI integration, drop consolidation onto
-> the originally-broken block, tool-gating for tree chains (axe-only),
-> per-category/per-block toggles, and new block categories (dirt/gravel,
-> leaves, mature crops). Behavior described below may change.
->
-> **Back up any world you care about before trying this.** Testing and
-> feedback are welcome and expected — please report issues against the
-> repository.
+Harvester `1.0.0` is a stable release. Harvester automatically continues
+breaking a connected group of tree logs or a single ore vein after you
+break one block by hand, using the same tool and durability rules as a
+normal break — no new drops, no bypassed game rules.
 
-Harvester automatically continues breaking a connected group of tree logs
-or a single ore vein after you break one block by hand, using the same
-tool and durability rules as a normal break — no new drops, no bypassed
-game rules.
+**Back up any world you care about before installing mods.**
+
+## Features
+
+- In-game configuration screen (default config key `H`, rebindable in
+  Controls) — no other mod required, edits `harvester.properties`
+  directly.
+- Persistent configuration in `harvester.properties`, migrated in place
+  across upgrades.
+- Per-category and per-block filtering via allowlist/denylist.
+- Tool gates per category (axe for logs, pickaxe for ores, shovel for
+  dirt/gravel, shears for leaves, hoe for crops).
+- Harvest drops consolidated at the origin block instead of scattered
+  along the vein.
+- Logs (axe-only chains).
+- Underground dirt and gravel (shovel, off by default).
+- Leaves (shears, off by default).
+- Mature wheat crops (hoe, off by default).
+- Server-authoritative multiplayer, off by default.
+- Safe defaults: every new/expanded category ships disabled until you
+  opt in.
 
 ## Requirements
 
@@ -63,19 +73,45 @@ Multiplayer support is server-authoritative and off by default.
 
 ## Configuration
 
-Harvester writes `harvester.properties` under the Fabric config
-directory on first run (both client and dedicated server), with these
-defaults:
+Harvester writes a fully documented `harvester.properties` under the
+Fabric config directory on first run (both client and dedicated server),
+and migrates an older file in place without losing your settings. On a
+client you can also edit it in-game: press the **config key** (default
+`H`, rebindable in Controls) to open the Harvester screen — a
+self-contained screen that needs no other mod and edits the same file.
+The dedicated server is configured by the file only; no graphical class
+ever loads there.
+
+Key settings (the file itself documents every option):
 
 ```properties
 enabled=true
 maxChain=64
 neighborhood=legacy_26
-diagnosticLogging=false
+consolidateDrops=true
 harvestLogs=true
 harvestOres=true
+harvestDirt=false
+harvestGravel=false
+harvestLeaves=false
+harvestCrops=false
+undergroundRequiresNoSky=true
+undergroundMaxY=63
+undergroundOverworldOnly=true
+allowlist=
+denylist=
+diagnosticLogging=false
 multiplayerAllowed=false
 ```
+
+- `consolidateDrops` — merge the whole action's drops into stacks at the
+  center of the block you broke, instead of scattering them along the vein.
+- The new `harvestDirt`/`harvestGravel`/`harvestLeaves`/`harvestCrops`
+  categories are **off by default** — opt in per category.
+- `allowlist`/`denylist` — comma-separated block identifiers. Precedence:
+  denylist > allowlist > category toggle > default. The denylist always
+  blocks; the allowlist only releases a block whose category is already
+  recognized (it never invents one).
 
 - `maxChain` — total blocks per activation, including the origin block.
   Whole number from 1 to 100; an invalid or out-of-range value falls
@@ -96,18 +132,29 @@ multiplayerAllowed=false
 
 ## Supported blocks
 
-- **Logs**: any block tagged as a log (`c:logs` / vanilla `minecraft:log`).
-- **Ores**: any block carrying a specific ore tag (`c:ores/<material>`,
-  e.g. coal, iron, gold, redstone), gated by the same tool-suitability
-  check vanilla uses for that block.
+Each category chains only while you hold the matching tool; a bare hand
+never starts a chain (but always still breaks the single block you aimed
+at, exactly like vanilla).
+
+- **Logs** (axe): any block tagged as a log (`c:logs` / vanilla
+  `minecraft:log`); different species chain together.
+- **Ores** (suitable pickaxe): any block carrying a specific ore tag
+  (`c:ores/<material>`, e.g. coal, iron, gold, redstone), gated by the
+  same tool-suitability check vanilla uses for that block.
+- **Dirt / gravel** (shovel, off by default): only underground —
+  Overworld, no direct sky access, and `Y <= 63` by default. Gravel
+  breaks top-down so a column never collapses onto an unbroken block.
+- **Leaves** (shears, off by default): the same leaf species, six-face
+  connectivity.
+- **Mature crops** (hoe, off by default): fully-grown wheat only, on one
+  farmland layer — an immature plant is never broken by the chain, and
+  there is no automatic replanting.
 
 ## Known limitations
 
 - The dedicated-server administrative rate limit for multiplayer
   activation transitions is fixed at 4 per second per player; it is not
   yet configurable.
-- There is no in-game GUI for configuration; all settings are plain
-  properties files.
 - Multi-block lapis veins and independently-triggered unlit-redstone
   participation in an adjacent lit-redstone chain are supported by the
   same generic logic but have not been directly observed in a large
@@ -121,6 +168,6 @@ repository rules.
 
 ## License status
 
-No Harvester 2.x license is granted yet. The intended program default is
-0BSD, but relicensing is blocked until the authorship and provenance
-audit is complete. Dependencies retain their own licenses.
+Harvester's own code is distributed under the 0BSD license (see
+`LICENSE`). Dependencies and build tooling remain under their own
+licenses — see `docs/LICENSE_AUDIT.md` and `LICENSES/README.md`.

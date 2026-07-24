@@ -3,6 +3,7 @@ package io.github.sfaguiar.harvester.client;
 import io.github.sfaguiar.harvester.client.input.HarvesterClientActivationState;
 import io.github.sfaguiar.harvester.core.BlockCoordinate;
 import io.github.sfaguiar.harvester.core.HarvestGroup;
+import io.github.sfaguiar.harvester.core.HarvestGroupKind;
 import io.github.sfaguiar.harvester.core.HarvestPlan;
 import io.github.sfaguiar.harvester.game.HarvestChainOutcome;
 import io.github.sfaguiar.harvester.game.HarvestToolCompatibility;
@@ -119,6 +120,12 @@ public final class SingleplayerHarvestExecutor {
                 candidates.add(included);
             }
         }
+        if (group.kind() == HarvestGroupKind.GRAVEL) {
+            // Break gravel from the top down so a column never collapses onto
+            // a not-yet-broken candidate; a candidate that has already turned
+            // into a falling entity fails revalidation and simply stops the chain.
+            candidates.sort((a, b) -> Integer.compare(b.y(), a.y()));
+        }
         int totalPlanned = candidates.size();
         if (totalPlanned == 0) {
             HarvesterEntrypoint.LOGGER.debug("[HARVEST-EXEC] Skipped: plan has no additional candidate.");
@@ -145,7 +152,8 @@ public final class SingleplayerHarvestExecutor {
 
             BlockCoordinate candidate = candidates.get(index);
             BlockState candidateState = candidateStateIfPresent(minecraft.world, candidate);
-            if (candidateState == null || !group.matches(StationBlockDescriptors.describe(candidateState))) {
+            int candidateMeta = minecraft.world.getBlockMeta(candidate.x(), candidate.y(), candidate.z());
+            if (candidateState == null || !group.matches(StationBlockDescriptors.describe(candidateState, candidateMeta))) {
                 HarvesterEntrypoint.LOGGER.debug(
                         "[HARVEST-EXEC] Chain candidate {}/{} no longer valid: {}",
                         index + 1, totalPlanned, candidate

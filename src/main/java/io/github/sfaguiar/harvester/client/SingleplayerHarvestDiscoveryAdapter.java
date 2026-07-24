@@ -41,6 +41,7 @@ public final class SingleplayerHarvestDiscoveryAdapter {
             int originY,
             int originZ,
             int preBreakBlockId,
+            int preBreakMeta,
             BlockState preBreakState
     ) {
         return HarvestDiscoveryAdapter.discoverForCompletedBreak(
@@ -51,6 +52,7 @@ public final class SingleplayerHarvestDiscoveryAdapter {
                 originY,
                 originZ,
                 preBreakBlockId,
+                preBreakMeta,
                 preBreakState
         );
     }
