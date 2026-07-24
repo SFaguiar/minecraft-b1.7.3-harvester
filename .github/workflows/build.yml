@@ -23,7 +23,7 @@ jobs:
       - name: Build and test
         shell: pwsh
         run: .\gradlew.bat clean check build --no-daemon --console=plain
-      - name: Validate metadata, Mixins, secrets, and prohibited files
+      - name: Validate metadata, Mixins, prohibited files, and artifact checksums
         shell: pwsh
         run: .\scripts\validate-project.ps1 | Tee-Object -FilePath build\checksums.sha256
       - name: Upload CI artifact
